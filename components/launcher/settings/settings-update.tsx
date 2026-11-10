@@ -1,26 +1,30 @@
 import { useState, useEffect, useCallback } from "react"
-import { IconShieldCheck, IconFlask, IconRefresh, IconDownload, IconCheck, IconPlayerPlay, IconLoader2, IconGitBranch } from "@tabler/icons-react"
+import { IconRefresh, IconDownload, IconCheck, IconPlayerPlay, IconLoader2, IconGitBranch } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
 
-type UpdateStatus = "idle" | "checking" | "available" | "downloaded" | "error" | "not-available"
+type UpdateStatus = "idle" | "checking" | "downloading" | "available" | "downloaded" | "preparing" | "error" | "not-available"
 type UpdateChannel = "stable" | "beta"
 
 export function SettingsUpdate() {
   const { t } = useTranslation()
   const [status, setStatus] = useState<UpdateStatus>("idle")
   const [remoteVersion, setRemoteVersion] = useState<string | null>(null)
-  const [progress, setProgress] = useState(0)
+  const [progress, setProgress] = useState<number | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [channel, setChannel] = useState<UpdateChannel>("stable")
+  const showError = useCallback((error: unknown) => {
+    setStatus("error")
+    setErrorMsg(error instanceof Error ? error.message : String(error))
+  }, [])
 
   useEffect(() => {
-    const api = window.electronAPI
+    const api = window.electrobunAPI
     if (!api) return
     // Загружаем текущий канал обновлений.
     void api.updateGetChannel?.().then((ch) => {
       if (ch) setChannel(ch)
-    })
+    }).catch(showError)
     const unsubStatus = api.onUpdateStatus((s) => {
       if (s.status === "available") {
         setStatus("available")
@@ -28,6 +32,10 @@ export function SettingsUpdate() {
       } else if (s.status === "downloaded") {
         setStatus("downloaded")
         setRemoteVersion(s.version ?? null)
+      } else if (s.status === "downloading") {
+        setStatus("downloading")
+      } else if (s.status === "preparing") {
+        setStatus("preparing")
       } else if (s.status === "checking") {
         setStatus("checking")
       } else if (s.status === "not-available") {
@@ -41,47 +49,35 @@ export function SettingsUpdate() {
       setProgress(p.percent)
     })
     return () => { unsubStatus(); unsubProgress() }
-  }, [])
+  }, [showError])
 
   const handleCheck = useCallback(async () => {
     setStatus("checking")
     setErrorMsg(null)
-    setProgress(0)
-    const result = await window.electronAPI?.updateCheck()
-    if (!result) {
-      setStatus("idle")
-      return
+    setProgress(null)
+    try {
+      const result = await window.electrobunAPI?.updateCheck()
+      if (!result) setStatus("idle")
+      else if (result.error) showError(result.error)
+    } catch (error) {
+      showError(error)
     }
-    if (result.available) {
-      setStatus("available")
-      setRemoteVersion(result.version ?? null)
-    } else if (result.error) {
-      setStatus("error")
-      setErrorMsg(result.error)
-    } else {
-      setStatus("not-available")
-    }
-  }, [])
+  }, [showError])
 
   const handleDownload = useCallback(async () => {
-    setProgress(0)
-    const result = await window.electronAPI?.updateDownload()
-    if (!result?.success) {
-      setStatus("error")
-      setErrorMsg(result?.error ?? "Download failed")
-    } else {
-      setProgress(100)
+    setProgress(null)
+    setStatus("downloading")
+    try {
+      const result = await window.electrobunAPI?.updateDownload()
+      if (!result?.success) showError(result?.error ?? "Download failed")
+    } catch (error) {
+      showError(error)
     }
-  }, [])
+  }, [showError])
 
   const handleInstall = useCallback(() => {
-    void window.electronAPI?.updateInstall()
-  }, [])
-
-  const handleChannelChange = useCallback((next: UpdateChannel) => {
-    setChannel(next)
-    void window.electronAPI?.updateSetChannel?.(next)
-  }, [])
+    void window.electrobunAPI?.updateInstall().catch(showError)
+  }, [showError])
 
   const statusLabel = (() => {
     switch (status) {
@@ -96,42 +92,9 @@ export function SettingsUpdate() {
 
   return (
     <div data-ui="settings-settings-update-div-1" data-component="settings-update" data-settings-tone="green" className="space-y-4 pt-5">
-      {/* Переключатель ветки обновлений */}
-      <div data-ui="settings-settings-update-div-8" className="flex flex-wrap items-center justify-between gap-4">
-        <div data-ui="settings-settings-update-div-9">
-          <div data-ui="settings-settings-update-div-10" className="flex items-center gap-2 font-medium text-foreground"><IconGitBranch className="h-4 w-4 shrink-0 text-primary" strokeWidth={1.75} aria-hidden="true" />{t("launcherUpdate.channel")}</div>
-          <p data-ui="settings-settings-update-p-4" className="mt-1 text-xs leading-relaxed text-muted-foreground">{t(channel === "stable" ? "launcherUpdate.channelDescStable" : "launcherUpdate.channelDescBeta")}</p>
-        </div>
-        <div data-ui="settings-settings-update-div-11" className="flex items-center gap-1 p-1 rounded-lg bg-muted/60 border border-border">
-          <button
-            data-ui="settings-settings-update-button-6"
-            type="button"
-            onClick={() => handleChannelChange("stable")}
-            className={cn(
-              "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-              channel === "stable"
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted"
-            )}
-          >
-            <IconShieldCheck className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-            {t("launcherUpdate.channelStable")}
-          </button>
-          <button
-            data-ui="settings-settings-update-button-7"
-            type="button"
-            onClick={() => handleChannelChange("beta")}
-            className={cn(
-              "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-              channel === "beta"
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted"
-            )}
-          >
-            <IconFlask className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-            {t("launcherUpdate.channelBeta")}
-          </button>
-        </div>
+      <div className="flex items-center gap-2 font-medium text-foreground">
+        <IconGitBranch className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+        {t("launcherUpdate.channel")} · {t(channel === "stable" ? "launcherUpdate.channelStable" : "launcherUpdate.channelBeta")}
       </div>
 
       <div data-ui="settings-settings-update-div-12" className="border-t border-border" />
@@ -173,6 +136,13 @@ export function SettingsUpdate() {
             {t("launcherUpdate.restart")}
           </button>
         )}
+        {status === "preparing" && (
+          <button onClick={() => { void window.electrobunAPI?.updateCancelInstall().catch(showError) }}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-muted text-muted-foreground font-medium">
+            <IconLoader2 className="w-4 h-4 animate-spin" strokeWidth={2} />
+            {t("common.cancel")}
+          </button>
+        )}
         {(status === "not-available" || status === "error") && (
           <button data-ui="settings-settings-update-button-5"
             onClick={handleCheck}
@@ -184,15 +154,16 @@ export function SettingsUpdate() {
         )}
       </div>
 
-      {status === "available" && progress > 0 && (
+      {status === "downloading" && (
         <div data-ui="settings-settings-update-div-5" className="space-y-2">
-          <div data-ui="settings-settings-update-div-6" className="w-full h-2 rounded-full bg-muted overflow-hidden">
+          <div data-ui="settings-settings-update-div-6" className="w-full h-2 rounded-full bg-muted overflow-hidden"
+            role="progressbar" aria-label={t("launcherUpdate.download")} aria-valuenow={progress ?? undefined}>
             <div data-ui="settings-settings-update-div-7"
-              className="h-full rounded-full bg-primary transition-all duration-300"
-              style={{ width: `${progress}%` }}
+              className={cn("h-full rounded-full bg-primary transition-all duration-300", progress === null && "animate-pulse")}
+              style={{ width: progress === null ? "100%" : `${progress}%` }}
             />
           </div>
-          <p data-ui="settings-settings-update-p-2" className="text-xs text-muted-foreground text-right">{Math.round(progress)}%</p>
+          {progress !== null && <p data-ui="settings-settings-update-p-2" className="text-xs text-muted-foreground text-right">{Math.round(progress)}%</p>}
         </div>
       )}
 
