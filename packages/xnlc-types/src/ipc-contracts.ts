@@ -401,6 +401,7 @@ export interface IpcInvokeMap {
   "update:install": { args: []; return: void }
   "update:cancel-install": { args: []; return: boolean }
   "update:get-channel": { args: []; return: "stable" | "beta" }
+  "update:set-channel": { args: [channel: "stable" | "beta"]; return: void }
 
   // ── Misc (без доменного префикса — историческое имя канала) ──
   "read-local-file": { args: [filePath: string]; return: string | null }
@@ -855,6 +856,7 @@ export interface ElectrobunAPIExtra {
   updateInstall: () => Promise<void>
   updateCancelInstall: () => Promise<boolean>
   updateGetChannel: () => Promise<"stable" | "beta">
+  updateSetChannel: (channel: "stable" | "beta") => Promise<void>
   onUpdateStatus: (callback: (status: { status: string; version?: string; releaseDate?: string; releaseNotes?: string; error?: string }) => void) => () => void
   onUpdateProgress: (callback: (progress: { percent: number; transferred: number; total: number }) => void) => () => void
   skinsGetProfile: (accountId?: string) => Promise<McProfile | null>

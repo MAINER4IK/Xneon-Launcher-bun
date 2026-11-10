@@ -2,14 +2,16 @@ import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
 import { copyFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises"
 import path from "node:path"
+import { updatePublicKeys, verifiedUpdateBridgeUrl } from "../electrobun/main/update-public-keys"
 
-const [input, output] = Bun.argv.slice(2)
+const [input, output, version = "1.0.8-pre1"] = Bun.argv.slice(2)
 assert.ok(input && output && path.resolve(input) !== path.resolve(output), "Expected distinct candidate and output directories")
 assert.equal(process.platform, "win32")
 assert.equal(process.arch, "x64")
 assert.equal(Bun.version, "1.4.4")
 
-const name = "xneon-launcher-1.0.8-pre1-win-x64.exe"
+assert.ok(version === "1.0.8-pre1" || version === "1.0.8-pre2")
+const name = `xneon-launcher-${version}-win-x64.exe`
 const archive = "stable-win-x64-XneonLauncher.tar.zst"
 const setupZip = "win-x64-XneonLauncher-Setup.zip"
 const legacyManifest = "stable-win-x64-update.json"
@@ -42,7 +44,7 @@ const v1 = JSON.parse(await readFile(path.join(input, legacyManifest), "utf8"))
 for (const doc of [v1, v2]) {
   assert.equal(doc.schemaVersion, 1)
   assert.equal(doc.identifier, "com.xneonlauncher.app")
-  assert.equal(doc.version, "1.0.8-pre1")
+  assert.equal(doc.version, version)
   assert.equal(doc.channel, "stable")
   assert.equal(doc.platform, "win")
   assert.equal(doc.arch, "x64")
@@ -79,11 +81,18 @@ assert.equal(local.identifier, v2.identifier)
 assert.equal(local.version, v2.version)
 assert.equal(local.channel, v2.channel)
 assert.equal(local.hash, v2.hash)
-assert.equal(local.baseUrl, "", "Experimental builds must not have an update feed")
+assert.equal(local.baseUrl, version === "1.0.8-pre1" ? "" : verifiedUpdateBridgeUrl, "Unexpected update feed identity")
 windowsX64(tar(archive, "XneonLauncher/bin/launcher.exe"))
 windowsX64(tar(archive, "XneonLauncher/bin/bun.exe"))
 const bundle = tar(archive, prefix + "app/bun/index.js").toString()
-assert.ok(bundle.includes("In-app updates are disabled in this experimental pre-release."), "Updater guard missing")
+if (version === "1.0.8-pre1") {
+  assert.ok(bundle.includes("In-app updates are disabled in this experimental pre-release."), "Updater guard missing")
+} else {
+  const keys = Object.entries(updatePublicKeys)
+  assert.ok(keys.length && keys.every(([id, pem]) => bundle.includes(id) && bundle.includes(pem.split("\n")[1])), "Trusted update keys missing from bundle")
+  assert.ok(bundle.includes("MAINER4IK/Xneon-Launcher-bun"), "Personal update feed missing")
+  assert.ok(!bundle.includes("XNLC_UPDATE_PRIVATE_KEY"), "Signing code must not be bundled")
+}
 const credentials = bundle.match(/cloudCredentials\s*=\s*\{([\s\S]*?)\n\s*\};/)
 assert.ok(credentials, "Cannot inspect bundled OAuth configuration")
 const values = [...credentials[1].matchAll(/\b(?:clientId|clientSecret|deviceClientId):\s*("(?:[^"\\]|\\.)*")/g)]

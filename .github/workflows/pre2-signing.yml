@@ -1,0 +1,112 @@
+name: Verify signed Windows pre2 candidate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.repository == 'MAINER4IK/Xneon-Launcher-bun' && github.ref == 'refs/heads/main'
+    runs-on: windows-2022
+    env:
+      HUTCH_NO_UPDATE_CHECK: '1'
+      BUN_OPTIONS: --no-env-file
+      XNLC_SKIP_LOCAL_DOTENV: '1'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Check target
+        run: |
+          if ('${{ runner.arch }}' -ne 'X64') { throw 'Windows x64 required' }
+          if ((bun --version) -ne '1.4.4') { throw 'Unexpected Bun version' }
+      - name: Install Hutch 0.29.0
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP 'hutch-install.ps1'
+          Invoke-WebRequest -Uri 'https://hutch.blackboard.sh/hutch/install.ps1' -OutFile $installer
+          if ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash -ne '185CC615D3D1B6E7156C104BEB902CCE3F4B9F35CB3D14DF047586AA432883E7') {
+            throw 'Hutch bootstrap checksum mismatch'
+          }
+          & $installer -Version 0.29.0 -NoModifyPath
+          $bin = Join-Path $env:USERPROFILE '.hutch/bin'
+          if ((& (Join-Path $bin 'hutch.exe') --version) -ne '0.29.0') { throw 'Unexpected Hutch version' }
+          Add-Content -LiteralPath $env:GITHUB_PATH -Value $bin
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Build and verify Windows packages
+        run: |
+          bun run build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          bun scripts/electrobun.mjs build --env=canary
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          bun scripts/validate-pre-release.ts release-electrobun/stable checked-installer 1.0.8-pre2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v5
+        with:
+          name: pre2-unsigned
+          path: |
+            release-electrobun/stable/stable-win-x64-update-v2.json
+            release-electrobun/stable/stable-win-x64-*.tar.zst
+            release-electrobun/canary/canary-win-x64-update-v2.json
+            release-electrobun/canary/canary-win-x64-*.tar.zst
+            checked-installer/xneon-launcher-1.0.8-pre2-win-x64.exe
+          if-no-files-found: error
+
+  sign:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pre2-signing
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - uses: actions/download-artifact@v5
+        with:
+          name: pre2-unsigned
+          path: unsigned
+      - name: Sign exact candidate manifests
+        env:
+          BUN_OPTIONS: --no-env-file
+          XNLC_UPDATE_PRIVATE_KEY: ${{ secrets.XNLC_UPDATE_PRIVATE_KEY }}
+          XNLC_UPDATE_KEY_ID: ${{ vars.XNLC_UPDATE_KEY_ID }}
+        run: |
+          set -euo pipefail
+          bun scripts/sign-update-feed.ts stable unsigned/release-electrobun/stable signed-stable
+          bun scripts/sign-update-feed.ts canary unsigned/release-electrobun/canary signed-canary
+          mkdir candidate
+          cp signed-stable/* signed-canary/* unsigned/checked-installer/xneon-launcher-1.0.8-pre2-win-x64.exe candidate/
+      - uses: actions/upload-artifact@v5
+        with:
+          name: pre2-signed-unverified
+          path: candidate/*
+          if-no-files-found: error
+
+  verify:
+    needs: sign
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - uses: actions/download-artifact@v5
+        with:
+          name: pre2-signed-unverified
+          path: candidate
+      - name: Verify signatures and exact publication bytes
+        run: bun scripts/verify-signed-update-feed.ts candidate
+      - uses: actions/upload-artifact@v5
+        with:
+          name: pre2-verified
+          path: candidate/*
+          if-no-files-found: error
