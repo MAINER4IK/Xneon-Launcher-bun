@@ -1,3 +1,4 @@
+import packageJson from "../../package.json"
 import Electrobun, { Updater } from "electrobun/main"
 import { app, rpcRegistry } from "../platform/desktop"
 import { launcherOperations, withinDeadline } from "../platform/operation-gate"
@@ -23,6 +24,17 @@ function updateError(error: unknown) {
 }
 
 export function registerUpdater() {
+  if (packageJson.version === "1.0.8-pre1") {
+    const error = "In-app updates are disabled in this experimental pre-release. Install builds manually."
+    rpcRegistry.handle("update:check", () => ({ available: false, error }))
+    rpcRegistry.handle("update:download", () => ({ success: false, error }))
+    rpcRegistry.handle("update:install", () => { updateError(error) })
+    rpcRegistry.handle("update:cancel-install", () => false)
+    rpcRegistry.handle("update:get-channel", async (): Promise<UpdateChannel> =>
+      (await Updater.getLocalInfo()).channel === "canary" ? "beta" : "stable")
+    return
+  }
+
   Electrobun.events.on("before-quit", event => {
     if (launcherOperations.blocked && !nativeQuitAllowed) event.response = { allow: false }
   })

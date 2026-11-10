@@ -28,7 +28,7 @@ export default {
     linux: { defaultRenderer: "native", bundleCEF: false },
   },
   release: {
-    baseUrl: "https://github.com/XneonTeam/Xneon-Launcher/releases/latest/download",
+    baseUrl: packageJson.version === "1.0.8-pre1" ? "" : "https://github.com/XneonTeam/Xneon-Launcher/releases/latest/download",
   },
   runtime: { exitOnLastWindowClosed: false, appUserModelId: identifier },
 } satisfies ElectrobunConfig
