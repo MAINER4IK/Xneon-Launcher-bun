@@ -1193,6 +1193,7 @@
   "launcherUpdate.restart": "Перезапустить",
   "launcherUpdate.checkAgain": "Проверить снова",
   "launcherUpdate.channel": "Ветка обновлений",
+  "launcherUpdate.stableReturn": "Stable установит только более новую стабильную версию. Для возврата к более старой версии нужна ручная установка.",
   "launcherUpdate.channelDescStable": "Stable — проверенные версии",
   "launcherUpdate.channelDescBeta": "Beta — ранний доступ к новым функциям",
   "launcherUpdate.channelStable": "Stable",

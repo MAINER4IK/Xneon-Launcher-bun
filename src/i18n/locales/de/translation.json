@@ -1251,6 +1251,7 @@
   "launcherUpdate.restart": "Neu starten",
   "launcherUpdate.checkAgain": "Erneut prüfen",
   "launcherUpdate.channel": "Update-Kanal",
+  "launcherUpdate.stableReturn": "Stable installiert nur eine neuere stabile Version. Eine ältere Version muss manuell installiert werden.",
   "launcherUpdate.channelDescStable": "Stable — geprüfte Versionen",
   "launcherUpdate.channelDescBeta": "Beta — früher Zugang zu neuen Funktionen",
   "launcherUpdate.channelStable": "Stable",

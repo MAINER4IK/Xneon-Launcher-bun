@@ -502,6 +502,7 @@ installDesktopApi({
   updateInstall: invoke('update:install'),
   updateCancelInstall: invoke('update:cancel-install'),
   updateGetChannel: invoke('update:get-channel'),
+  updateSetChannel: invoke('update:set-channel'),
   onUpdateStatus: (callback: (status: { status: string; version?: string; releaseDate?: string; releaseNotes?: string; error?: string }) => void) => subscribe('update:status', callback),
   onUpdateProgress: (callback: (progress: { percent: number; transferred: number; total: number }) => void) => subscribe('update:progress', callback),
 })

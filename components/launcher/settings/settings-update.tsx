@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from "react"
 import { IconRefresh, IconDownload, IconCheck, IconPlayerPlay, IconLoader2, IconGitBranch } from "@tabler/icons-react"
+import { APP_VERSION } from "@/lib/app-meta"
+import { ActionConfirmDialog } from "@/components/launcher/instance/action-confirm-dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
 
@@ -13,6 +16,9 @@ export function SettingsUpdate() {
   const [progress, setProgress] = useState<number | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [channel, setChannel] = useState<UpdateChannel>("stable")
+  const [pendingChannel, setPendingChannel] = useState<UpdateChannel | null>(null)
+  const [savingChannel, setSavingChannel] = useState(false)
+  const busy = savingChannel || status === "checking" || status === "downloading" || status === "preparing"
   const showError = useCallback((error: unknown) => {
     setStatus("error")
     setErrorMsg(error instanceof Error ? error.message : String(error))
@@ -50,6 +56,24 @@ export function SettingsUpdate() {
     })
     return () => { unsubStatus(); unsubProgress() }
   }, [showError])
+
+  const confirmChannel = async () => {
+    const api = window.electrobunAPI
+    if (!api || !pendingChannel || busy) return
+    const next = pendingChannel
+    setPendingChannel(null)
+    setSavingChannel(true)
+    try {
+      await api.updateSetChannel(next)
+      setChannel(next)
+      setStatus("idle")
+      setRemoteVersion(null)
+      setProgress(null)
+      setErrorMsg(null)
+    } catch (error) {
+      showError(error)
+    } finally { setSavingChannel(false) }
+  }
 
   const handleCheck = useCallback(async () => {
     setStatus("checking")
@@ -92,10 +116,34 @@ export function SettingsUpdate() {
 
   return (
     <div data-ui="settings-settings-update-div-1" data-component="settings-update" data-settings-tone="green" className="space-y-4 pt-5">
-      <div className="flex items-center gap-2 font-medium text-foreground">
-        <IconGitBranch className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-        {t("launcherUpdate.channel")} · {t(channel === "stable" ? "launcherUpdate.channelStable" : "launcherUpdate.channelBeta")}
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 font-medium text-foreground">
+            <IconGitBranch className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+            {t("launcherUpdate.channel")}
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">{APP_VERSION}</div>
+        </div>
+        <Select value={channel} disabled={busy} onValueChange={value => { if (value === "stable" || value === "beta") setPendingChannel(value) }}>
+          <SelectTrigger aria-label={t("launcherUpdate.channel")} className="w-32"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="stable">{t("launcherUpdate.channelStable")}</SelectItem>
+            <SelectItem value="beta">{t("launcherUpdate.channelBeta")}</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
+      {channel === "stable" && APP_VERSION.includes("-pre") && (
+        <p className="text-xs text-muted-foreground">{t("launcherUpdate.stableReturn")}</p>
+      )}
+      <ActionConfirmDialog
+        open={pendingChannel !== null}
+        onClose={() => setPendingChannel(null)}
+        onConfirm={() => { void confirmChannel() }}
+        title={t("launcherUpdate.channel")}
+        description={t(pendingChannel === "beta" ? "launcherUpdate.channelDescBeta" : "launcherUpdate.stableReturn")}
+        variant="info"
+        icon="info"
+      />
 
       <div data-ui="settings-settings-update-div-12" className="border-t border-border" />
 
@@ -106,6 +154,7 @@ export function SettingsUpdate() {
         {status === "idle" && (
           <button data-ui="settings-settings-update-button-1"
             onClick={handleCheck}
+            disabled={savingChannel}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors"
           >
             <IconRefresh className="w-4 h-4" strokeWidth={2} />
@@ -121,6 +170,7 @@ export function SettingsUpdate() {
         {status === "available" && (
           <button data-ui="settings-settings-update-button-3"
             onClick={handleDownload}
+            disabled={savingChannel}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors"
           >
             <IconDownload className="w-4 h-4" strokeWidth={2} />
@@ -130,6 +180,7 @@ export function SettingsUpdate() {
         {status === "downloaded" && (
           <button data-ui="settings-settings-update-button-4"
             onClick={handleInstall}
+            disabled={savingChannel}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors"
           >
             <IconPlayerPlay className="w-4 h-4" strokeWidth={2} />
@@ -146,6 +197,7 @@ export function SettingsUpdate() {
         {(status === "not-available" || status === "error") && (
           <button data-ui="settings-settings-update-button-5"
             onClick={handleCheck}
+            disabled={savingChannel}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-muted text-muted-foreground font-medium hover:bg-muted/80 transition-colors"
           >
             <IconRefresh className="w-4 h-4" strokeWidth={2} />

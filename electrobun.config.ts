@@ -1,5 +1,6 @@
 import type { ElectrobunConfig } from "electrobun"
 import packageJson from "./package.json"
+import { verifiedUpdateBridgeUrl } from "./electrobun/main/update-public-keys"
 
 const identifier = "com.xneonlauncher.app"
 const artifactChannel = process.env.XNEON_ARTIFACT_CHANNEL ?? "stable"
@@ -27,8 +28,9 @@ export default {
     mac: { defaultRenderer: "native", bundleCEF: false },
     linux: { defaultRenderer: "native", bundleCEF: false },
   },
+  scripts: { postBuild: "scripts/set-windows-executable-identity.ts" },
   release: {
-    baseUrl: packageJson.version === "1.0.8-pre1" ? "" : "https://github.com/XneonTeam/Xneon-Launcher/releases/latest/download",
+    baseUrl: artifactChannel === "dev" ? "" : verifiedUpdateBridgeUrl,
   },
   runtime: { exitOnLastWindowClosed: false, appUserModelId: identifier },
 } satisfies ElectrobunConfig

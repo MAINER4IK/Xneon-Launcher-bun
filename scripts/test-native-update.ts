@@ -2,6 +2,9 @@ import assert from "node:assert/strict"
 import { mock } from "bun:test"
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"
+import { createHash, generateKeyPairSync, sign } from "node:crypto"
+import { serveVerifiedUpdate, stageVerifiedArchive } from "../electrobun/main/verified-update-feed"
+import { verifyWindowsUpdateManifest } from "../electrobun/main/verified-update-manifest"
 
 assert.equal(process.platform, "win32")
 const repo = path.resolve(import.meta.dir, "..")
@@ -71,9 +74,26 @@ try {
   assert.equal(Updater.updateInfo().updateReady, false)
   assert.match(Updater.updateInfo().error, /ArchiveHashMismatch/)
   wrongDigest = false
-  assert.equal((await Updater.checkForUpdate()).updateAvailable, true)
-  await Updater.downloadUpdate()
-  assert.equal(Updater.updateInfo().updateReady, true, Updater.updateInfo().error)
+  const archiveBytes = readFileSync(archive)
+  const payload = Buffer.from(JSON.stringify({ ...manifest, artifact: {
+    ...manifest.artifact,
+    downloadSha256: createHash("sha256").update(archiveBytes).digest("hex"),
+    downloadSize: archiveBytes.length,
+  } }))
+  const { privateKey, publicKey } = generateKeyPairSync("ed25519")
+  const checked = verifyWindowsUpdateManifest(payload, sign(null, payload, privateKey), publicKey, source.version, channel, "canary")
+  const update = { manifest: checked, archiveUrl: new URL(manifest.artifact.file, server.url).href }
+  const staged = await stageVerifiedArchive(update, root, AbortSignal.timeout(60_000), () => {})
+  server.stop(true)
+  const bridge = serveVerifiedUpdate(update, staged.file, source.baseUrl)
+  try {
+    assert.equal((await Updater.checkForUpdate()).updateAvailable, true)
+    await Updater.downloadUpdate()
+    assert.equal(Updater.updateInfo().updateReady, true, Updater.updateInfo().error)
+  } finally {
+    bridge.stop()
+    await staged.dispose()
+  }
   assert.deepEqual(JSON.parse(readFileSync(metadata, "utf8")), source)
   console.log("Native update prepared without replacing the source installation:", root)
 } finally {
