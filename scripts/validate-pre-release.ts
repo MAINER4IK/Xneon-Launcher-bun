@@ -11,7 +11,7 @@ assert.equal(process.platform, "win32")
 assert.equal(process.arch, "x64")
 assert.equal(Bun.version, "1.4.4")
 
-assert.ok(version === "1.0.8-pre1" || version === "1.0.8-pre2" || version === "1.0.8-pre3")
+assert.ok(version === "1.0.8" || version === "1.0.8-pre1" || version === "1.0.8-pre2" || version === "1.0.8-pre3")
 const name = `xneon-launcher-${version}-win-x64.exe`
 const archive = "stable-win-x64-XneonLauncher.tar.zst"
 const setupZip = "win-x64-XneonLauncher-Setup.zip"
