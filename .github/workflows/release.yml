@@ -2,6 +2,11 @@ name: Windows experimental pre-release
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_run_id:
+        description: 'Successful validation run on v1.0.8-pre1 to publish'
+        type: string
+        required: false
   push:
     tags:
       - 'v1.0.8-pre1'
@@ -11,7 +16,7 @@ permissions:
 
 jobs:
   build:
-    if: github.repository == 'MAINER4IK/Xneon-Launcher-bun'
+    if: github.repository == 'MAINER4IK/Xneon-Launcher-bun' && !inputs.publish_run_id
     runs-on: windows-2022
     env:
       HUTCH_NO_UPDATE_CHECK: '1'
@@ -73,9 +78,58 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
+  verify_previous:
+    if: github.repository == 'MAINER4IK/Xneon-Launcher-bun' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_run_id != ''
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Verify source run and tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.publish_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          root="repos/$GITHUB_REPOSITORY"
+          tag=$(gh api "$root/git/ref/tags/v1.0.8-pre1" --jq '.object.sha')
+          commit=$(gh api "$root/git/tags/$tag" --jq '.object.sha')
+          workflow=$(gh api "$root/actions/workflows/release.yml" --jq '.id')
+          gh api "$root/actions/runs/$RUN_ID" |
+            jq -e --arg sha "$commit" --argjson workflow "$workflow" '
+              .workflow_id == $workflow and .head_sha == $sha and
+              .head_branch == "v1.0.8-pre1" and .conclusion == "success"
+            ' >/dev/null
+          gh api "$root/actions/runs/$RUN_ID/jobs" |
+            jq -e 'any(.jobs[]; .name == "validate" and .conclusion == "success")' >/dev/null
+      - uses: actions/download-artifact@v5
+        with:
+          name: windows-x64-verified
+          path: verified
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.publish_run_id }}
+      - name: Recheck verified artifact
+        working-directory: verified
+        run: |
+          set -euo pipefail
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 2
+          expected=$(sha256sum xneon-launcher-1.0.8-pre1-win-x64.exe)
+          test "$(cat SHA256SUMS.txt)" = "$expected"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: windows-x64-verified
+          path: |
+            verified/xneon-launcher-1.0.8-pre1-win-x64.exe
+            verified/SHA256SUMS.txt
+          if-no-files-found: error
+
   release:
-    if: github.repository == 'MAINER4IK/Xneon-Launcher-bun' && github.event_name == 'push' && github.ref == 'refs/tags/v1.0.8-pre1'
-    needs: validate
+    if: >-
+      ${{ always() && !cancelled() && github.repository == 'MAINER4IK/Xneon-Launcher-bun' &&
+          ((github.event_name == 'push' && github.ref == 'refs/tags/v1.0.8-pre1' && needs.validate.result == 'success') ||
+           (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && needs.verify_previous.result == 'success')) }}
+    needs: [validate, verify_previous]
     runs-on: ubuntu-latest
     permissions:
       contents: write
