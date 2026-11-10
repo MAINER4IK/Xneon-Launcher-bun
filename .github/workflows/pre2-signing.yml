@@ -2,6 +2,7 @@ name: Verify signed Windows pre2 candidate
 
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -46,6 +47,23 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           bun scripts/validate-pre-release.ts release-electrobun/stable checked-installer 1.0.8-pre2
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:XNEON_BUILD_PORTABLE = '1'
+          try {
+            bun scripts/electrobun.mjs build --env=dev
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Remove-Item Env:XNEON_BUILD_PORTABLE
+          }
+          bun scripts/package-windows-portable.ts checked-installer/xneon-launcher-1.0.8-pre2-win-x64.exe checked-distribution
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v5
+        with:
+          name: pre2-windows-distribution
+          path: |
+            checked-distribution/xneon-launcher-1.0.8-pre2-win-x64.exe
+            checked-distribution/xneon-launcher-1.0.8-pre2-win-x64-portable.zip
+            checked-distribution/SHA256SUMS.txt
+          if-no-files-found: error
       - uses: actions/upload-artifact@v5
         with:
           name: pre2-unsigned
@@ -104,7 +122,10 @@ jobs:
           name: pre2-signed-unverified
           path: candidate
       - name: Verify signatures and exact publication bytes
-        run: bun scripts/verify-signed-update-feed.ts candidate
+        run: |
+          bun scripts/verify-signed-update-feed.ts candidate
+          grep -E '  (stable|canary)-win-x64-' candidate/SHA256SUMS.txt > candidate/SHA256SUMS-UPDATES.txt
+          (cd candidate && sha256sum --check SHA256SUMS-UPDATES.txt)
       - uses: actions/upload-artifact@v5
         with:
           name: pre2-verified

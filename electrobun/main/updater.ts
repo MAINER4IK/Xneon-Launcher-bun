@@ -6,6 +6,7 @@ import { closeDatabaseForUpdate } from "../db/core"
 import { dbHelpers, initDatabase } from "../db"
 import { lstat, readFile, unlink } from "node:fs/promises"
 import path from "node:path"
+import { isPortable } from "./profile-path"
 import { verifiedUpdateBridgeUrl } from "./update-public-keys"
 import { discoverVerifiedUpdate, stageVerifiedArchive, serveVerifiedUpdate, type VerifiedUpdate } from "./verified-update-feed"
 import { stopMcpConnections } from "./agent-mcp"
@@ -56,8 +57,10 @@ export function registerUpdater() {
     } finally { changingChannel = false }
   })
 
-  if (packageJson.version === "1.0.8-pre1") {
-    const error = "In-app updates are disabled in this experimental pre-release. Install builds manually."
+  if (isPortable || packageJson.version === "1.0.8-pre1") {
+    const error = isPortable
+      ? "Portable builds require manual updates."
+      : "In-app updates are disabled in this experimental pre-release. Install builds manually."
     rpcRegistry.handle("update:check", () => ({ available: false, error }))
     rpcRegistry.handle("update:download", () => ({ success: false, error }))
     rpcRegistry.handle("update:install", () => { updateError(error) })
