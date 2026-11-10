@@ -1,4 +1,4 @@
-name: Verify signed Windows pre2 candidate
+name: Verify signed Windows pre3 candidate
 
 on:
   workflow_dispatch:
@@ -45,7 +45,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           bun scripts/electrobun.mjs build --env=canary
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          bun scripts/validate-pre-release.ts release-electrobun/stable checked-installer 1.0.8-pre2
+          bun scripts/validate-pre-release.ts release-electrobun/stable checked-installer 1.0.8-pre3
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $env:XNEON_BUILD_PORTABLE = '1'
           try {
@@ -54,25 +54,25 @@ jobs:
           } finally {
             Remove-Item Env:XNEON_BUILD_PORTABLE
           }
-          bun scripts/package-windows-portable.ts checked-installer/xneon-launcher-1.0.8-pre2-win-x64.exe checked-distribution
+          bun scripts/package-windows-portable.ts checked-installer/xneon-launcher-1.0.8-pre3-win-x64.exe checked-distribution
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v5
         with:
-          name: pre2-windows-distribution
+          name: pre3-windows-distribution
           path: |
-            checked-distribution/xneon-launcher-1.0.8-pre2-win-x64.exe
-            checked-distribution/xneon-launcher-1.0.8-pre2-win-x64-portable.zip
+            checked-distribution/xneon-launcher-1.0.8-pre3-win-x64.exe
+            checked-distribution/xneon-launcher-1.0.8-pre3-win-x64-portable.zip
             checked-distribution/SHA256SUMS.txt
           if-no-files-found: error
       - uses: actions/upload-artifact@v5
         with:
-          name: pre2-unsigned
+          name: pre3-unsigned
           path: |
             release-electrobun/stable/stable-win-x64-update-v2.json
             release-electrobun/stable/stable-win-x64-*.tar.zst
             release-electrobun/canary/canary-win-x64-update-v2.json
             release-electrobun/canary/canary-win-x64-*.tar.zst
-            checked-installer/xneon-launcher-1.0.8-pre2-win-x64.exe
+            checked-installer/xneon-launcher-1.0.8-pre3-win-x64.exe
           if-no-files-found: error
 
   sign:
@@ -88,7 +88,7 @@ jobs:
           bun-version: 1.4.4
       - uses: actions/download-artifact@v5
         with:
-          name: pre2-unsigned
+          name: pre3-unsigned
           path: unsigned
       - name: Sign exact candidate manifests
         env:
@@ -100,10 +100,10 @@ jobs:
           bun scripts/sign-update-feed.ts stable unsigned/release-electrobun/stable signed-stable
           bun scripts/sign-update-feed.ts canary unsigned/release-electrobun/canary signed-canary
           mkdir candidate
-          cp signed-stable/* signed-canary/* unsigned/checked-installer/xneon-launcher-1.0.8-pre2-win-x64.exe candidate/
+          cp signed-stable/* signed-canary/* unsigned/checked-installer/xneon-launcher-1.0.8-pre3-win-x64.exe candidate/
       - uses: actions/upload-artifact@v5
         with:
-          name: pre2-signed-unverified
+          name: pre3-signed-unverified
           path: candidate/*
           if-no-files-found: error
 
@@ -119,7 +119,7 @@ jobs:
           bun-version: 1.4.4
       - uses: actions/download-artifact@v5
         with:
-          name: pre2-signed-unverified
+          name: pre3-signed-unverified
           path: candidate
       - name: Verify signatures and exact publication bytes
         run: |
@@ -128,6 +128,6 @@ jobs:
           (cd candidate && sha256sum --check SHA256SUMS-UPDATES.txt)
       - uses: actions/upload-artifact@v5
         with:
-          name: pre2-verified
+          name: pre3-verified
           path: candidate/*
           if-no-files-found: error

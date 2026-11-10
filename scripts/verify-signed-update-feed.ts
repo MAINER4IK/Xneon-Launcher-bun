@@ -7,8 +7,8 @@ import { updatePublicKeys } from "../electrobun/main/update-public-keys"
 import { verifySignedWindowsUpdateManifest } from "../electrobun/main/verified-update-manifest"
 
 const [directory] = Bun.argv.slice(2)
-assert.ok(directory && packageJson.version === "1.0.8-pre2")
-const expected = new Set(["xneon-launcher-1.0.8-pre2-win-x64.exe"])
+assert.ok(directory && packageJson.version === "1.0.8-pre3")
+const expected = new Set(["xneon-launcher-1.0.8-pre3-win-x64.exe"])
 for (const channel of ["stable", "canary"] as const) {
   const name = `${channel}-win-x64-update-v2.json`
   const [manifestBytes, envelope] = await Promise.all(

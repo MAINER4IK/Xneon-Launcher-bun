@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback } from "react"
-import { IconRefresh, IconDownload, IconCheck, IconPlayerPlay, IconLoader2, IconGitBranch } from "@tabler/icons-react"
-import { APP_VERSION } from "@/lib/app-meta"
+import { IconShieldCheck, IconFlask, IconRefresh, IconDownload, IconPlayerPlay, IconLoader2, IconGitBranch } from "@tabler/icons-react"
 import { ActionConfirmDialog } from "@/components/launcher/instance/action-confirm-dialog"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
 
@@ -116,25 +114,47 @@ export function SettingsUpdate() {
 
   return (
     <div data-ui="settings-settings-update-div-1" data-component="settings-update" data-settings-tone="green" className="space-y-4 pt-5">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2 font-medium text-foreground">
-            <IconGitBranch className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-            {t("launcherUpdate.channel")}
-          </div>
-          <div className="mt-1 text-xs text-muted-foreground">{APP_VERSION}</div>
+      <div data-ui="settings-settings-update-div-8" className="flex flex-wrap items-center justify-between gap-4">
+        <div data-ui="settings-settings-update-div-9">
+          <div data-ui="settings-settings-update-div-10" className="flex items-center gap-2 font-medium text-foreground"><IconGitBranch className="h-4 w-4 shrink-0 text-primary" strokeWidth={1.75} aria-hidden="true" />{t("launcherUpdate.channel")}</div>
+          <p data-ui="settings-settings-update-p-4" className="mt-1 text-xs leading-relaxed text-muted-foreground">{t(channel === "stable" ? "launcherUpdate.channelDescStable" : "launcherUpdate.channelDescBeta")}</p>
         </div>
-        <Select value={channel} disabled={busy} onValueChange={value => { if (value === "stable" || value === "beta") setPendingChannel(value) }}>
-          <SelectTrigger aria-label={t("launcherUpdate.channel")} className="w-32"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="stable">{t("launcherUpdate.channelStable")}</SelectItem>
-            <SelectItem value="beta">{t("launcherUpdate.channelBeta")}</SelectItem>
-          </SelectContent>
-        </Select>
+        <div data-ui="settings-settings-update-div-11" className="flex items-center gap-1 p-1 rounded-lg bg-muted/60 border border-border">
+          <button
+            data-ui="settings-settings-update-button-6"
+            type="button"
+            aria-pressed={channel === "stable"}
+            disabled={busy || channel === "stable"}
+            onClick={() => setPendingChannel("stable")}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+              channel === "stable"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            )}
+          >
+            <IconShieldCheck className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+            {t("launcherUpdate.channelStable")}
+          </button>
+          <button
+            data-ui="settings-settings-update-button-7"
+            type="button"
+            aria-pressed={channel === "beta"}
+            disabled={busy || channel === "beta"}
+            onClick={() => setPendingChannel("beta")}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+              channel === "beta"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            )}
+          >
+            <IconFlask className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+            {t("launcherUpdate.channelBeta")}
+          </button>
+        </div>
       </div>
-      {channel === "stable" && APP_VERSION.includes("-pre") && (
-        <p className="text-xs text-muted-foreground">{t("launcherUpdate.stableReturn")}</p>
-      )}
+
       <ActionConfirmDialog
         open={pendingChannel !== null}
         onClose={() => setPendingChannel(null)}
