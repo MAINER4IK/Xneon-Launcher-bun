@@ -39,6 +39,19 @@ jobs:
           Add-Content -LiteralPath $env:GITHUB_PATH -Value $bin
       - name: Install dependencies
         run: bun install --frozen-lockfile
+      - name: Ensure NSIS
+        run: |
+          $candidates = @(
+            (Join-Path $env:ProgramFiles 'NSIS\makensis.exe'),
+            (Join-Path ${env:ProgramFiles(x86)} 'NSIS\makensis.exe')
+          ) | Where-Object { Test-Path -LiteralPath $_ }
+          if (-not $candidates) {
+            choco install nsis --yes --no-progress
+            $candidates = @((Join-Path ${env:ProgramFiles(x86)} 'NSIS\makensis.exe')) | Where-Object { Test-Path -LiteralPath $_ }
+          }
+          if (-not $candidates) { throw 'makensis (NSIS 3) is required to build the Windows installer' }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value ('XNEON_MAKENSIS=' + $candidates[0])
+          & $candidates[0] /VERSION
       - name: Build and verify Windows packages
         run: |
           bun run build
@@ -61,7 +74,11 @@ jobs:
           name: pre3-windows-distribution
           path: |
             checked-distribution/xneon-launcher-1.0.8-pre3-win-x64.exe
+            checked-distribution/xneon-launcher-1.0.8-pre3-win-x64.exe.blockmap
+            checked-distribution/xneon-launcher-1.0.8-pre3-win-x64.zip
+            checked-distribution/xneon-launcher-1.0.8-pre3-win-x64.zip.blockmap
             checked-distribution/xneon-launcher-1.0.8-pre3-win-x64-portable.zip
+            checked-distribution/latest.yml
             checked-distribution/SHA256SUMS.txt
           if-no-files-found: error
       - uses: actions/upload-artifact@v5
@@ -73,6 +90,7 @@ jobs:
             release-electrobun/canary/canary-win-x64-update-v2.json
             release-electrobun/canary/canary-win-x64-*.tar.zst
             checked-installer/xneon-launcher-1.0.8-pre3-win-x64.exe
+            checked-installer/xneon-launcher-1.0.8-pre3-win-x64.zip
           if-no-files-found: error
 
   sign:
@@ -100,7 +118,9 @@ jobs:
           bun scripts/sign-update-feed.ts stable unsigned/release-electrobun/stable signed-stable
           bun scripts/sign-update-feed.ts canary unsigned/release-electrobun/canary signed-canary
           mkdir candidate
-          cp signed-stable/* signed-canary/* unsigned/checked-installer/xneon-launcher-1.0.8-pre3-win-x64.exe candidate/
+          cp signed-stable/* signed-canary/* \
+            unsigned/checked-installer/xneon-launcher-1.0.8-pre3-win-x64.exe \
+            unsigned/checked-installer/xneon-launcher-1.0.8-pre3-win-x64.zip candidate/
       - uses: actions/upload-artifact@v5
         with:
           name: pre3-signed-unverified

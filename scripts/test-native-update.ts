@@ -5,6 +5,7 @@ import path from "node:path"
 import { createHash, generateKeyPairSync, sign } from "node:crypto"
 import { serveVerifiedUpdate, stageVerifiedArchive } from "../electrobun/main/verified-update-feed"
 import { verifyWindowsUpdateManifest } from "../electrobun/main/verified-update-manifest"
+import { appIdentifier } from "../electrobun/main/app-identity"
 
 assert.equal(process.platform, "win32")
 const repo = path.resolve(import.meta.dir, "..")
@@ -17,7 +18,7 @@ const root = childRoot ?? mkdtempSync(path.join(temp, "native-update-" + channel
 assert.match(path.relative(temp, root), /^native-update-(stable|canary)-[\w-]+$/)
 const artifacts = path.join(repo, "release-electrobun", channel)
 const manifest = JSON.parse(readFileSync(path.join(artifacts, prefix + "-update-v2.json"), "utf8"))
-assert.equal(manifest.identifier, "com.xneonlauncher.app")
+assert.equal(manifest.identifier, appIdentifier)
 assert.equal(manifest.channel, channel)
 assert.equal(manifest.artifact.file, path.basename(manifest.artifact.file))
 const archive = path.join(artifacts, manifest.artifact.file)

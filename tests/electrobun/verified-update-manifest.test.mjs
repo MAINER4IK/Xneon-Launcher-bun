@@ -2,10 +2,11 @@ import assert from "node:assert/strict"
 import { generateKeyPairSync, sign } from "node:crypto"
 import { test } from "bun:test"
 import { verifySignedWindowsUpdateManifest, verifyWindowsUpdateManifest } from "../../electrobun/main/verified-update-manifest.ts"
+import { appIdentifier } from "../../electrobun/main/app-identity.ts"
 
 const { publicKey, privateKey } = generateKeyPairSync("ed25519")
 const manifest = {
-  schemaVersion: 1, identifier: "com.xneonlauncher.app", channel: "stable",
+  schemaVersion: 1, identifier: appIdentifier, channel: "stable",
   version: "1.0.8", hash: "abc123", platform: "win", arch: "x64",
   artifact: { file: "stable-win-x64-XneonLauncher.tar.zst", tarSha256: "a".repeat(64), tarSize: 1000, downloadSha256: "b".repeat(64), downloadSize: 500 },
 }
@@ -22,6 +23,10 @@ test("stable and beta apply version policy without changing the installed channe
   assert.throws(() => verifyManifest({ version: "1.0.8-pre1" }), /newer/)
   assert.throws(() => verifyManifest({}, "1.0.8"), /newer/)
   assert.throws(() => verifyManifest({ channel: "canary" }), /installed package/)
+})
+
+test("legacy identifier is rejected", () => {
+  assert.throws(() => verifyManifest({ identifier: "com.xneonlauncher.app" }), /installed package/)
 })
 
 test("signature and archive integrity fields are required", () => {

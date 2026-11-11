@@ -1,4 +1,5 @@
 import { createPublicKey, verify, type KeyObject } from "node:crypto"
+import { appIdentifier } from "./app-identity"
 
 const MAX_MANIFEST_BYTES = 64 * 1024
 const MAX_ARCHIVE_BYTES = 2 * 1024 ** 3
@@ -34,7 +35,7 @@ export function verifyWindowsUpdateManifest(
   }
 
   const manifest = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
-  if (manifest?.schemaVersion !== 1 || manifest.identifier !== "com.xneonlauncher.app" ||
+  if (manifest?.schemaVersion !== 1 || manifest.identifier !== appIdentifier ||
       manifest.platform !== "win" || manifest.arch !== "x64" || manifest.channel !== installedChannel) {
     throw new Error("Update manifest does not match the installed package")
   }
@@ -61,7 +62,7 @@ export function verifyWindowsUpdateManifest(
 
   return {
     schemaVersion: 1,
-    identifier: "com.xneonlauncher.app",
+    identifier: appIdentifier,
     channel: installedChannel,
     version: manifest.version as string,
     hash: manifest.hash as string,
