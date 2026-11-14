@@ -15,7 +15,7 @@ const versionTag = /^v(?:0|[1-9]\d{0,8})\.(?:0|[1-9]\d{0,8})\.(?:0|[1-9]\d{0,8})
 
 async function get(url: string, allowAssetRedirects: boolean, signal: AbortSignal): Promise<Response> {
   for (let hop = 0; hop <= 4; hop++) {
-    const response = await fetch(url, { redirect: "manual", signal, headers: { "User-Agent": "Xneon-Launcher-Updater" } })
+    const response = await fetch(url, { redirect: "manual", signal, headers: { "User-Agent": "Xneon-Launcher/1.0.8" } })
     if (![301, 302, 303, 307, 308].includes(response.status)) {
       if (response.ok) return response
       await response.body?.cancel()

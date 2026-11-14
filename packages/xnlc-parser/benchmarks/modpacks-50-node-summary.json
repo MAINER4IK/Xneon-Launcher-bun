@@ -1,0 +1,47 @@
+{
+  "withHashes": false,
+  "xmclRuntime": "C:\\Program Files\\nodejs\\node.exe",
+  "repetitions": 1,
+  "runs": [
+    {
+      "iteration": 1,
+      "mode": "xnlc",
+      "elapsedMs": 19965.832300000002,
+      "wallMs": 20042.6326,
+      "maxRssKiB": 165400,
+      "count": 3212
+    },
+    {
+      "iteration": 1,
+      "mode": "xmcl",
+      "elapsedMs": 167827.6489,
+      "wallMs": 167963.42930000002,
+      "maxRssKiB": 264736,
+      "count": 3212
+    }
+  ],
+  "summary": [
+    {
+      "mode": "xnlc",
+      "medianMs": 19965.832300000002,
+      "medianWallMs": 20042.6326,
+      "medianPeakRssKiB": 165400,
+      "maxPeakRssKiB": 165400
+    },
+    {
+      "mode": "xmcl",
+      "medianMs": 167827.6489,
+      "medianWallMs": 167963.42930000002,
+      "medianPeakRssKiB": 264736,
+      "maxPeakRssKiB": 264736
+    }
+  ],
+  "comparisons": [
+    {
+      "iteration": 1,
+      "unique": 2595,
+      "mismatches": 1,
+      "errors": 32
+    }
+  ]
+}

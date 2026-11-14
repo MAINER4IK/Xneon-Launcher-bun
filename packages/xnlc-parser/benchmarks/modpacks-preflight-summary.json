@@ -1,0 +1,43 @@
+{
+  "withHashes": false,
+  "xmclRuntime": "bun",
+  "repetitions": 1,
+  "runs": [
+    {
+      "iteration": 1,
+      "mode": "xnlc",
+      "elapsedMs": 16817.833300000002,
+      "maxRssKiB": 138068,
+      "count": 3184
+    },
+    {
+      "iteration": 1,
+      "mode": "xmcl",
+      "elapsedMs": 58934.465000000004,
+      "maxRssKiB": 212616,
+      "count": 3184
+    }
+  ],
+  "summary": [
+    {
+      "mode": "xnlc",
+      "medianMs": 16817.833300000002,
+      "medianPeakRssKiB": 138068,
+      "maxPeakRssKiB": 138068
+    },
+    {
+      "mode": "xmcl",
+      "medianMs": 58934.465000000004,
+      "medianPeakRssKiB": 212616,
+      "maxPeakRssKiB": 212616
+    }
+  ],
+  "comparisons": [
+    {
+      "iteration": 1,
+      "unique": 2570,
+      "mismatches": 1,
+      "errors": 22
+    }
+  ]
+}

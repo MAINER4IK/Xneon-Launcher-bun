@@ -1,0 +1,489 @@
+{
+  "elapsedMs": 54814.1587,
+  "maxRssKiB": 446288,
+  "packs": [
+    {
+      "slug": "fabulously-optimized",
+      "count": 49,
+      "inspected": 49,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 394.8214
+    },
+    {
+      "slug": "zombie-invade-100-days",
+      "count": 143,
+      "inspected": 143,
+      "missingMetadata": 2,
+      "missingMetadataHashes": [
+        "ae50255ad8f3eb44951ee4ab1749f4b2cfa1dbe8",
+        "962fdb760409d6d71cbf079235f1ca94e3863a22"
+      ],
+      "errors": [],
+      "elapsedMs": 2010.9204999999997
+    },
+    {
+      "slug": "cobblemon-fabric",
+      "count": 75,
+      "inspected": 75,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 1839.0578
+    },
+    {
+      "slug": "cobbleverse",
+      "count": 136,
+      "inspected": 136,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 2802.7675
+    },
+    {
+      "slug": "battlearmorytacz",
+      "count": 100,
+      "inspected": 100,
+      "missingMetadata": 2,
+      "missingMetadataHashes": [
+        "962fdb760409d6d71cbf079235f1ca94e3863a22",
+        "23f4a45b2ea66548fddff299326cd56e2d9e5cf8"
+      ],
+      "errors": [],
+      "elapsedMs": 1738.3914000000004
+    },
+    {
+      "slug": "better-mc-fabric-bmc2",
+      "count": 333,
+      "inspected": 333,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 3427.362299999999
+    },
+    {
+      "slug": "sodiumplus",
+      "count": 65,
+      "inspected": 65,
+      "missingMetadata": 1,
+      "missingMetadataHashes": [
+        "1d7fa7520c758bfa19145db4e6f264a946d1aaf2"
+      ],
+      "errors": [],
+      "elapsedMs": 3757.4467999999997
+    },
+    {
+      "slug": "vanilla-perfected",
+      "count": 78,
+      "inspected": 78,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 2781.9977
+    },
+    {
+      "slug": "the-pixelmon-modpack",
+      "count": 13,
+      "inspected": 13,
+      "missingMetadata": 1,
+      "missingMetadataHashes": [
+        "29818ac0483c2a6b92c776b3535a1491dd35fda7"
+      ],
+      "errors": [],
+      "elapsedMs": 4430.150300000001
+    },
+    {
+      "slug": "better-mc-forge-bmc4",
+      "count": 330,
+      "inspected": 330,
+      "missingMetadata": 2,
+      "missingMetadataHashes": [
+        "962fdb760409d6d71cbf079235f1ca94e3863a22",
+        "4ce4e836cc837a9b99dd1a9119260c640a4b5240"
+      ],
+      "errors": [],
+      "elapsedMs": 5340.035100000001
+    },
+    {
+      "slug": "slimes-adventure",
+      "count": 125,
+      "inspected": 125,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 1275.3392999999996
+    },
+    {
+      "slug": "skyblock-enhanced",
+      "count": 67,
+      "inspected": 67,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 957.2671999999984
+    },
+    {
+      "slug": "optifabric-modpack",
+      "count": 36,
+      "inspected": 36,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 335.80019999999786
+    },
+    {
+      "slug": "fps",
+      "count": 9,
+      "inspected": 9,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 105.44480000000112
+    },
+    {
+      "slug": "fresh-smooth",
+      "count": 102,
+      "inspected": 102,
+      "missingMetadata": 1,
+      "missingMetadataHashes": [
+        "2b2e14a4aad85da51bf11a3bd84bdff06a14260e"
+      ],
+      "errors": [],
+      "elapsedMs": 1279.2404999999999
+    },
+    {
+      "slug": "aged",
+      "count": 189,
+      "inspected": 189,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 1828.3143000000018
+    },
+    {
+      "slug": "create_plus",
+      "count": 286,
+      "inspected": 286,
+      "missingMetadata": 2,
+      "missingMetadataHashes": [
+        "cf09c1be6d8950e3f7551f02f141818aee5a3ec0",
+        "bedf1769a47640f76599925d2481beed982e2aa4"
+      ],
+      "errors": [],
+      "elapsedMs": 1720.9498999999996
+    },
+    {
+      "slug": "remarkably",
+      "count": 30,
+      "inspected": 30,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 266.0072999999975
+    },
+    {
+      "slug": "rso",
+      "count": 80,
+      "inspected": 80,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 2356.705399999999
+    },
+    {
+      "slug": "skyblocker-modpack",
+      "count": 30,
+      "inspected": 30,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 295.7871000000014
+    },
+    {
+      "slug": "hoplite-for-lunar-client",
+      "count": 14,
+      "inspected": 14,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 136.54579999999987
+    },
+    {
+      "slug": "realisticcraft",
+      "count": 58,
+      "inspected": 58,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 574.8833000000013
+    },
+    {
+      "slug": "backroomsff",
+      "count": 47,
+      "inspected": 47,
+      "missingMetadata": 1,
+      "missingMetadataHashes": [
+        "dcd89a1cc07ffca1a908ec3f987b309c3bba1dbc"
+      ],
+      "errors": [],
+      "elapsedMs": 1163.1735999999946
+    },
+    {
+      "slug": "brasil-cobblemon-mobile",
+      "count": 26,
+      "inspected": 26,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 1109.6123999999982
+    },
+    {
+      "slug": "distant-horizons-iris-shaders",
+      "count": 18,
+      "inspected": 18,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 310.39560000000347
+    },
+    {
+      "slug": "the-horrors-in-the-fog",
+      "count": 75,
+      "inspected": 75,
+      "missingMetadata": 2,
+      "missingMetadataHashes": [
+        "eaa1394577b235cff9f28022980e9c7bb7d7ebf5",
+        "c43dd3a76d47721baa58e9cb3d2150d51c4f95a6"
+      ],
+      "errors": [],
+      "elapsedMs": 1580.172400000003
+    },
+    {
+      "slug": "svc-for-lunar-client",
+      "count": 6,
+      "inspected": 6,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 102.50769999999466
+    },
+    {
+      "slug": "optifine-for-fabric",
+      "count": 68,
+      "inspected": 68,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 337.6368000000002
+    },
+    {
+      "slug": "optimized-fps",
+      "count": 18,
+      "inspected": 18,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 129.25950000000012
+    },
+    {
+      "slug": "spunky-boost",
+      "count": 27,
+      "inspected": 27,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 193.46689999999944
+    },
+    {
+      "slug": "dwellers-modpack",
+      "count": 54,
+      "inspected": 54,
+      "missingMetadata": 1,
+      "missingMetadataHashes": [
+        "6634f2e00be7eb213f7a5e59215a7b6984d0cf2b"
+      ],
+      "errors": [],
+      "elapsedMs": 952.5195000000022
+    },
+    {
+      "slug": "vulkan-optimized",
+      "count": 25,
+      "inspected": 25,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 244.49429999999847
+    },
+    {
+      "slug": "legacy-minecraft",
+      "count": 88,
+      "inspected": 88,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 3017.8171999999977
+    },
+    {
+      "slug": "skyblock-plus",
+      "count": 6,
+      "inspected": 6,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 99.0219999999972
+    },
+    {
+      "slug": "plo",
+      "count": 31,
+      "inspected": 31,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 159.95609999999579
+    },
+    {
+      "slug": "wynncraft-for-lunar-client",
+      "count": 15,
+      "inspected": 15,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 216.96970000000147
+    },
+    {
+      "slug": "mcc-island-for-lunar-client",
+      "count": 12,
+      "inspected": 12,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 117.26440000000002
+    },
+    {
+      "slug": "performium-was-taken",
+      "count": 36,
+      "inspected": 36,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 286.99060000000463
+    },
+    {
+      "slug": "spunky-optimized",
+      "count": 30,
+      "inspected": 30,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 349.43279999999504
+    },
+    {
+      "slug": "keo-optimized",
+      "count": 21,
+      "inspected": 21,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 178.97269999999844
+    },
+    {
+      "slug": "optimizationn",
+      "count": 16,
+      "inspected": 16,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 179.54809999999998
+    },
+    {
+      "slug": "blockfront-mod-pack",
+      "count": 2,
+      "inspected": 2,
+      "missingMetadata": 1,
+      "missingMetadataHashes": [
+        "1bff4eeeb5709c66adbec40d031b63be48526a52"
+      ],
+      "errors": [],
+      "elapsedMs": 1039.8905000000013
+    },
+    {
+      "slug": "ukupvp",
+      "count": 44,
+      "inspected": 44,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 332.39949999999953
+    },
+    {
+      "slug": "minimalcreate",
+      "count": 13,
+      "inspected": 13,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 273.4369999999981
+    },
+    {
+      "slug": "rapid_optimization",
+      "count": 21,
+      "inspected": 21,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 294.27040000000125
+    },
+    {
+      "slug": "heropack-verse-fiskheroes-server",
+      "count": 5,
+      "inspected": 5,
+      "missingMetadata": 1,
+      "missingMetadataHashes": [
+        "141de4ee9efc85e30481f17bf215c49d0f3cd8ba"
+      ],
+      "errors": [],
+      "elapsedMs": 146.45360000000073
+    },
+    {
+      "slug": "additive",
+      "count": 57,
+      "inspected": 57,
+      "missingMetadata": 1,
+      "missingMetadataHashes": [
+        "247d9842ffb5ba27ba88f40b5b44193e0321a523"
+      ],
+      "errors": [],
+      "elapsedMs": 349.1128000000026
+    },
+    {
+      "slug": "hypixel-skyblock-for-lunar-client",
+      "count": 17,
+      "inspected": 17,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 375.63590000000113
+    },
+    {
+      "slug": "kimetsunoyaiba",
+      "count": 57,
+      "inspected": 57,
+      "missingMetadata": 1,
+      "missingMetadataHashes": [
+        "962fdb760409d6d71cbf079235f1ca94e3863a22"
+      ],
+      "errors": [],
+      "elapsedMs": 1250.0490999999965
+    },
+    {
+      "slug": "adrenaline",
+      "count": 29,
+      "inspected": 29,
+      "missingMetadata": 0,
+      "missingMetadataHashes": [],
+      "errors": [],
+      "elapsedMs": 207.50250000000233
+    }
+  ]
+}

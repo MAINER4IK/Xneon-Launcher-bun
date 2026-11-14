@@ -1,0 +1,312 @@
+{
+  "unique": 2595,
+  "scenario": "Контроль финального состояния XNLC после проверки descriptor и освобождения индекса",
+  "maxRssKiB": 147040,
+  "count": 3212,
+  "mismatchesVsPrevious": 0,
+  "note": "Один проход; кэш ОС не очищался. Сопоставлены ID, версии и канонический JSON Fabric/Quilt.",
+  "diagnostics": 22,
+  "packs": [
+    {
+      "slug": "fabulously-optimized",
+      "count": 49,
+      "elapsedMs": 214.6663,
+      "errors": 1
+    },
+    {
+      "slug": "zombie-invade-100-days",
+      "count": 143,
+      "elapsedMs": 1207.0650999999998,
+      "errors": 0
+    },
+    {
+      "slug": "cobblemon-fabric",
+      "count": 75,
+      "elapsedMs": 337.3845000000001,
+      "errors": 0
+    },
+    {
+      "slug": "cobbleverse",
+      "count": 136,
+      "elapsedMs": 699.5142000000001,
+      "errors": 1
+    },
+    {
+      "slug": "battlearmorytacz",
+      "count": 100,
+      "elapsedMs": 1066.8953000000001,
+      "errors": 0
+    },
+    {
+      "slug": "better-mc-fabric-bmc2",
+      "count": 333,
+      "elapsedMs": 2072.1929999999998,
+      "errors": 13
+    },
+    {
+      "slug": "sodiumplus",
+      "count": 65,
+      "elapsedMs": 254.31820000000062,
+      "errors": 0
+    },
+    {
+      "slug": "vanilla-perfected",
+      "count": 78,
+      "elapsedMs": 328.0078000000003,
+      "errors": 0
+    },
+    {
+      "slug": "the-pixelmon-modpack",
+      "count": 13,
+      "elapsedMs": 131.73750000000018,
+      "errors": 0
+    },
+    {
+      "slug": "better-mc-forge-bmc4",
+      "count": 330,
+      "elapsedMs": 2510.8777999999993,
+      "errors": 2
+    },
+    {
+      "slug": "slimes-adventure",
+      "count": 125,
+      "elapsedMs": 647.8338999999996,
+      "errors": 0
+    },
+    {
+      "slug": "skyblock-enhanced",
+      "count": 67,
+      "elapsedMs": 225.98609999999826,
+      "errors": 0
+    },
+    {
+      "slug": "optifabric-modpack",
+      "count": 36,
+      "elapsedMs": 117.94560000000092,
+      "errors": 0
+    },
+    {
+      "slug": "fps",
+      "count": 9,
+      "elapsedMs": 26.364799999999377,
+      "errors": 0
+    },
+    {
+      "slug": "fresh-smooth",
+      "count": 102,
+      "elapsedMs": 400.95600000000013,
+      "errors": 0
+    },
+    {
+      "slug": "aged",
+      "count": 189,
+      "elapsedMs": 927.0709999999999,
+      "errors": 4
+    },
+    {
+      "slug": "create_plus",
+      "count": 286,
+      "elapsedMs": 2188.8139999999985,
+      "errors": 0
+    },
+    {
+      "slug": "remarkably",
+      "count": 30,
+      "elapsedMs": 130.0717999999997,
+      "errors": 0
+    },
+    {
+      "slug": "rso",
+      "count": 80,
+      "elapsedMs": 378.15200000000004,
+      "errors": 0
+    },
+    {
+      "slug": "skyblocker-modpack",
+      "count": 30,
+      "elapsedMs": 142.66679999999906,
+      "errors": 0
+    },
+    {
+      "slug": "hoplite-for-lunar-client",
+      "count": 14,
+      "elapsedMs": 50.58420000000115,
+      "errors": 0
+    },
+    {
+      "slug": "realisticcraft",
+      "count": 58,
+      "elapsedMs": 212.92090000000098,
+      "errors": 0
+    },
+    {
+      "slug": "backroomsff",
+      "count": 47,
+      "elapsedMs": 236.6795000000002,
+      "errors": 0
+    },
+    {
+      "slug": "brasil-cobblemon-mobile",
+      "count": 26,
+      "elapsedMs": 162.63999999999942,
+      "errors": 0
+    },
+    {
+      "slug": "distant-horizons-iris-shaders",
+      "count": 18,
+      "elapsedMs": 78.33230000000003,
+      "errors": 0
+    },
+    {
+      "slug": "the-horrors-in-the-fog",
+      "count": 75,
+      "elapsedMs": 617.2518999999993,
+      "errors": 0
+    },
+    {
+      "slug": "svc-for-lunar-client",
+      "count": 6,
+      "elapsedMs": 22.80369999999857,
+      "errors": 0
+    },
+    {
+      "slug": "optifine-for-fabric",
+      "count": 68,
+      "elapsedMs": 239.47090000000026,
+      "errors": 0
+    },
+    {
+      "slug": "optimized-fps",
+      "count": 18,
+      "elapsedMs": 95.69020000000091,
+      "errors": 0
+    },
+    {
+      "slug": "spunky-boost",
+      "count": 27,
+      "elapsedMs": 92.4333000000006,
+      "errors": 0
+    },
+    {
+      "slug": "dwellers-modpack",
+      "count": 54,
+      "elapsedMs": 416.58200000000033,
+      "errors": 0
+    },
+    {
+      "slug": "vulkan-optimized",
+      "count": 25,
+      "elapsedMs": 115.63450000000012,
+      "errors": 0
+    },
+    {
+      "slug": "legacy-minecraft",
+      "count": 88,
+      "elapsedMs": 270.0612000000019,
+      "errors": 0
+    },
+    {
+      "slug": "skyblock-plus",
+      "count": 6,
+      "elapsedMs": 29.68989999999758,
+      "errors": 0
+    },
+    {
+      "slug": "plo",
+      "count": 31,
+      "elapsedMs": 84.47630000000208,
+      "errors": 0
+    },
+    {
+      "slug": "wynncraft-for-lunar-client",
+      "count": 15,
+      "elapsedMs": 40.6733000000022,
+      "errors": 0
+    },
+    {
+      "slug": "mcc-island-for-lunar-client",
+      "count": 12,
+      "elapsedMs": 33.80939999999828,
+      "errors": 0
+    },
+    {
+      "slug": "performium-was-taken",
+      "count": 36,
+      "elapsedMs": 118.33959999999934,
+      "errors": 0
+    },
+    {
+      "slug": "spunky-optimized",
+      "count": 30,
+      "elapsedMs": 127.30340000000069,
+      "errors": 0
+    },
+    {
+      "slug": "keo-optimized",
+      "count": 21,
+      "elapsedMs": 68.30390000000261,
+      "errors": 0
+    },
+    {
+      "slug": "optimizationn",
+      "count": 16,
+      "elapsedMs": 52.780399999999645,
+      "errors": 0
+    },
+    {
+      "slug": "blockfront-mod-pack",
+      "count": 2,
+      "elapsedMs": 24.133600000001024,
+      "errors": 0
+    },
+    {
+      "slug": "ukupvp",
+      "count": 44,
+      "elapsedMs": 152.9385000000002,
+      "errors": 0
+    },
+    {
+      "slug": "minimalcreate",
+      "count": 13,
+      "elapsedMs": 110.04959999999846,
+      "errors": 0
+    },
+    {
+      "slug": "rapid_optimization",
+      "count": 21,
+      "elapsedMs": 94.62670000000071,
+      "errors": 0
+    },
+    {
+      "slug": "heropack-verse-fiskheroes-server",
+      "count": 5,
+      "elapsedMs": 15.688099999999395,
+      "errors": 0
+    },
+    {
+      "slug": "additive",
+      "count": 57,
+      "elapsedMs": 176.91820000000007,
+      "errors": 1
+    },
+    {
+      "slug": "hypixel-skyblock-for-lunar-client",
+      "count": 17,
+      "elapsedMs": 52.624299999999494,
+      "errors": 0
+    },
+    {
+      "slug": "kimetsunoyaiba",
+      "count": 57,
+      "elapsedMs": 387.86439999999857,
+      "errors": 0
+    },
+    {
+      "slug": "adrenaline",
+      "count": 29,
+      "elapsedMs": 129.1094000000012,
+      "errors": 0
+    }
+  ],
+  "elapsedMs": 18318.967800000002
+}

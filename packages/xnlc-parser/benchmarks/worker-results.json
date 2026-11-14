@@ -1,0 +1,99 @@
+{
+  "caveat": "One worker per process; OS cache uncontrolled. New mode also parses dependencies and loader requirements; metadata/SHA-1/fingerprint outputs match. RSS is process-wide.",
+  "summary": [
+    {
+      "mode": "legacy",
+      "count": 103,
+      "processes": 5,
+      "medianMs": 860.5195,
+      "minMs": 813.1152000000001,
+      "maxMs": 903.8028999999999,
+      "jarsPerSecond": 119.69513764650307,
+      "medianPeakRssKiB": 302320,
+      "maxPeakRssKiB": 305660
+    },
+    {
+      "mode": "new",
+      "count": 103,
+      "processes": 5,
+      "medianMs": 883.9114,
+      "minMs": 800.4547,
+      "maxMs": 974.17,
+      "jarsPerSecond": 116.52751621938579,
+      "medianPeakRssKiB": 209256,
+      "maxPeakRssKiB": 218832
+    }
+  ],
+  "runs": [
+    {
+      "mode": "legacy",
+      "count": 103,
+      "elapsedMs": 903.8028999999999,
+      "maxRssKiB": 305660,
+      "digest": "f6648dfff9f946df42917aa8a1b57782e0dead628617e11a8e48360cf23e9b5c"
+    },
+    {
+      "mode": "new",
+      "count": 103,
+      "elapsedMs": 974.17,
+      "maxRssKiB": 209256,
+      "digest": "f6648dfff9f946df42917aa8a1b57782e0dead628617e11a8e48360cf23e9b5c"
+    },
+    {
+      "mode": "new",
+      "count": 103,
+      "elapsedMs": 800.4547,
+      "maxRssKiB": 218832,
+      "digest": "f6648dfff9f946df42917aa8a1b57782e0dead628617e11a8e48360cf23e9b5c"
+    },
+    {
+      "mode": "legacy",
+      "count": 103,
+      "elapsedMs": 860.5195,
+      "maxRssKiB": 302608,
+      "digest": "f6648dfff9f946df42917aa8a1b57782e0dead628617e11a8e48360cf23e9b5c"
+    },
+    {
+      "mode": "legacy",
+      "count": 103,
+      "elapsedMs": 813.1152000000001,
+      "maxRssKiB": 287952,
+      "digest": "f6648dfff9f946df42917aa8a1b57782e0dead628617e11a8e48360cf23e9b5c"
+    },
+    {
+      "mode": "new",
+      "count": 103,
+      "elapsedMs": 883.9114,
+      "maxRssKiB": 212936,
+      "digest": "f6648dfff9f946df42917aa8a1b57782e0dead628617e11a8e48360cf23e9b5c"
+    },
+    {
+      "mode": "new",
+      "count": 103,
+      "elapsedMs": 901.7816,
+      "maxRssKiB": 208536,
+      "digest": "f6648dfff9f946df42917aa8a1b57782e0dead628617e11a8e48360cf23e9b5c"
+    },
+    {
+      "mode": "legacy",
+      "count": 103,
+      "elapsedMs": 888.9821000000001,
+      "maxRssKiB": 302320,
+      "digest": "f6648dfff9f946df42917aa8a1b57782e0dead628617e11a8e48360cf23e9b5c"
+    },
+    {
+      "mode": "legacy",
+      "count": 103,
+      "elapsedMs": 831.3201,
+      "maxRssKiB": 291120,
+      "digest": "f6648dfff9f946df42917aa8a1b57782e0dead628617e11a8e48360cf23e9b5c"
+    },
+    {
+      "mode": "new",
+      "count": 103,
+      "elapsedMs": 806.7652,
+      "maxRssKiB": 202756,
+      "digest": "f6648dfff9f946df42917aa8a1b57782e0dead628617e11a8e48360cf23e9b5c"
+    }
+  ]
+}

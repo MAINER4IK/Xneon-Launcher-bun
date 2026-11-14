@@ -1,0 +1,870 @@
+{
+  "xnlc": {
+    "count": 3212,
+    "elapsedMs": 26198.4587,
+    "maxRssKiB": 130720,
+    "packs": [
+      {
+        "slug": "fabulously-optimized",
+        "count": 49,
+        "elapsedMs": 227.2423,
+        "errors": 1
+      },
+      {
+        "slug": "zombie-invade-100-days",
+        "count": 143,
+        "elapsedMs": 959.0910000000001,
+        "errors": 0
+      },
+      {
+        "slug": "cobblemon-fabric",
+        "count": 75,
+        "elapsedMs": 405.3759,
+        "errors": 0
+      },
+      {
+        "slug": "cobbleverse",
+        "count": 136,
+        "elapsedMs": 607.085,
+        "errors": 1
+      },
+      {
+        "slug": "battlearmorytacz",
+        "count": 100,
+        "elapsedMs": 672.2660000000001,
+        "errors": 0
+      },
+      {
+        "slug": "better-mc-fabric-bmc2",
+        "count": 333,
+        "elapsedMs": 2877.8749999999995,
+        "errors": 13
+      },
+      {
+        "slug": "sodiumplus",
+        "count": 65,
+        "elapsedMs": 501.7460999999994,
+        "errors": 0
+      },
+      {
+        "slug": "vanilla-perfected",
+        "count": 78,
+        "elapsedMs": 622.8019999999997,
+        "errors": 0
+      },
+      {
+        "slug": "the-pixelmon-modpack",
+        "count": 13,
+        "elapsedMs": 183.38609999999971,
+        "errors": 0
+      },
+      {
+        "slug": "better-mc-forge-bmc4",
+        "count": 330,
+        "elapsedMs": 4169.848600000001,
+        "errors": 2
+      },
+      {
+        "slug": "slimes-adventure",
+        "count": 125,
+        "elapsedMs": 1336.3514000000014,
+        "errors": 0
+      },
+      {
+        "slug": "skyblock-enhanced",
+        "count": 67,
+        "elapsedMs": 471.91089999999895,
+        "errors": 0
+      },
+      {
+        "slug": "optifabric-modpack",
+        "count": 36,
+        "elapsedMs": 225.85300000000097,
+        "errors": 0
+      },
+      {
+        "slug": "fps",
+        "count": 9,
+        "elapsedMs": 67.48040000000037,
+        "errors": 0
+      },
+      {
+        "slug": "fresh-smooth",
+        "count": 102,
+        "elapsedMs": 731.9004000000004,
+        "errors": 0
+      },
+      {
+        "slug": "aged",
+        "count": 189,
+        "elapsedMs": 1473.7543999999998,
+        "errors": 4
+      },
+      {
+        "slug": "create_plus",
+        "count": 286,
+        "elapsedMs": 3262.3334000000013,
+        "errors": 0
+      },
+      {
+        "slug": "remarkably",
+        "count": 30,
+        "elapsedMs": 176.21399999999994,
+        "errors": 0
+      },
+      {
+        "slug": "rso",
+        "count": 80,
+        "elapsedMs": 510.59110000000146,
+        "errors": 0
+      },
+      {
+        "slug": "skyblocker-modpack",
+        "count": 30,
+        "elapsedMs": 222.96840000000157,
+        "errors": 0
+      },
+      {
+        "slug": "hoplite-for-lunar-client",
+        "count": 14,
+        "elapsedMs": 89.40100000000166,
+        "errors": 0
+      },
+      {
+        "slug": "realisticcraft",
+        "count": 58,
+        "elapsedMs": 360.54739999999947,
+        "errors": 0
+      },
+      {
+        "slug": "backroomsff",
+        "count": 47,
+        "elapsedMs": 269.6051000000007,
+        "errors": 0
+      },
+      {
+        "slug": "brasil-cobblemon-mobile",
+        "count": 26,
+        "elapsedMs": 173.54739999999947,
+        "errors": 0
+      },
+      {
+        "slug": "distant-horizons-iris-shaders",
+        "count": 18,
+        "elapsedMs": 85.6224000000002,
+        "errors": 0
+      },
+      {
+        "slug": "the-horrors-in-the-fog",
+        "count": 75,
+        "elapsedMs": 859.9099000000024,
+        "errors": 0
+      },
+      {
+        "slug": "svc-for-lunar-client",
+        "count": 6,
+        "elapsedMs": 23.012500000000728,
+        "errors": 0
+      },
+      {
+        "slug": "optifine-for-fabric",
+        "count": 68,
+        "elapsedMs": 319.3241999999991,
+        "errors": 0
+      },
+      {
+        "slug": "optimized-fps",
+        "count": 18,
+        "elapsedMs": 135.9857000000011,
+        "errors": 0
+      },
+      {
+        "slug": "spunky-boost",
+        "count": 27,
+        "elapsedMs": 143.2401000000027,
+        "errors": 0
+      },
+      {
+        "slug": "dwellers-modpack",
+        "count": 54,
+        "elapsedMs": 405.7461000000003,
+        "errors": 0
+      },
+      {
+        "slug": "vulkan-optimized",
+        "count": 25,
+        "elapsedMs": 94.37089999999807,
+        "errors": 0
+      },
+      {
+        "slug": "legacy-minecraft",
+        "count": 88,
+        "elapsedMs": 754.3647999999994,
+        "errors": 0
+      },
+      {
+        "slug": "skyblock-plus",
+        "count": 6,
+        "elapsedMs": 66.09370000000126,
+        "errors": 0
+      },
+      {
+        "slug": "plo",
+        "count": 31,
+        "elapsedMs": 105.45639999999912,
+        "errors": 0
+      },
+      {
+        "slug": "wynncraft-for-lunar-client",
+        "count": 15,
+        "elapsedMs": 59.95969999999943,
+        "errors": 0
+      },
+      {
+        "slug": "mcc-island-for-lunar-client",
+        "count": 12,
+        "elapsedMs": 56.283299999999144,
+        "errors": 0
+      },
+      {
+        "slug": "performium-was-taken",
+        "count": 36,
+        "elapsedMs": 201.26629999999932,
+        "errors": 0
+      },
+      {
+        "slug": "spunky-optimized",
+        "count": 30,
+        "elapsedMs": 124.26280000000042,
+        "errors": 0
+      },
+      {
+        "slug": "keo-optimized",
+        "count": 21,
+        "elapsedMs": 120.15309999999954,
+        "errors": 0
+      },
+      {
+        "slug": "optimizationn",
+        "count": 16,
+        "elapsedMs": 70.84779999999955,
+        "errors": 0
+      },
+      {
+        "slug": "blockfront-mod-pack",
+        "count": 2,
+        "elapsedMs": 25.235000000000582,
+        "errors": 0
+      },
+      {
+        "slug": "ukupvp",
+        "count": 44,
+        "elapsedMs": 217.91830000000118,
+        "errors": 0
+      },
+      {
+        "slug": "minimalcreate",
+        "count": 13,
+        "elapsedMs": 150.45430000000124,
+        "errors": 0
+      },
+      {
+        "slug": "rapid_optimization",
+        "count": 21,
+        "elapsedMs": 389.7913000000008,
+        "errors": 0
+      },
+      {
+        "slug": "heropack-verse-fiskheroes-server",
+        "count": 5,
+        "elapsedMs": 31.96469999999681,
+        "errors": 0
+      },
+      {
+        "slug": "additive",
+        "count": 57,
+        "elapsedMs": 411.1247000000003,
+        "errors": 1
+      },
+      {
+        "slug": "hypixel-skyblock-for-lunar-client",
+        "count": 17,
+        "elapsedMs": 151.66059999999925,
+        "errors": 0
+      },
+      {
+        "slug": "kimetsunoyaiba",
+        "count": 57,
+        "elapsedMs": 472.3173999999999,
+        "errors": 0
+      },
+      {
+        "slug": "adrenaline",
+        "count": 29,
+        "elapsedMs": 122.87039999999979,
+        "errors": 0
+      }
+    ],
+    "coverage": {
+      "recognized": 2584,
+      "withoutMetadata": 11,
+      "withErrors": 22
+    }
+  },
+  "xmcl": {
+    "count": 3212,
+    "elapsedMs": 112575.20169999999,
+    "maxRssKiB": 251092,
+    "packs": [
+      {
+        "slug": "fabulously-optimized",
+        "count": 49,
+        "elapsedMs": 747.4604999999999,
+        "errors": 1
+      },
+      {
+        "slug": "zombie-invade-100-days",
+        "count": 143,
+        "elapsedMs": 3001.5283,
+        "errors": 0
+      },
+      {
+        "slug": "cobblemon-fabric",
+        "count": 75,
+        "elapsedMs": 2815.4493,
+        "errors": 0
+      },
+      {
+        "slug": "cobbleverse",
+        "count": 136,
+        "elapsedMs": 6414.562100000001,
+        "errors": 1
+      },
+      {
+        "slug": "battlearmorytacz",
+        "count": 100,
+        "elapsedMs": 4833.3948,
+        "errors": 0
+      },
+      {
+        "slug": "better-mc-fabric-bmc2",
+        "count": 333,
+        "elapsedMs": 13103.696499999998,
+        "errors": 12
+      },
+      {
+        "slug": "sodiumplus",
+        "count": 65,
+        "elapsedMs": 1339.4206000000013,
+        "errors": 0
+      },
+      {
+        "slug": "vanilla-perfected",
+        "count": 78,
+        "elapsedMs": 1842.483400000001,
+        "errors": 0
+      },
+      {
+        "slug": "the-pixelmon-modpack",
+        "count": 13,
+        "elapsedMs": 4817.050899999995,
+        "errors": 0
+      },
+      {
+        "slug": "better-mc-forge-bmc4",
+        "count": 330,
+        "elapsedMs": 15118.721399999995,
+        "errors": 1
+      },
+      {
+        "slug": "slimes-adventure",
+        "count": 125,
+        "elapsedMs": 11011.207499999997,
+        "errors": 0
+      },
+      {
+        "slug": "skyblock-enhanced",
+        "count": 67,
+        "elapsedMs": 2285.3173000000024,
+        "errors": 0
+      },
+      {
+        "slug": "optifabric-modpack",
+        "count": 36,
+        "elapsedMs": 544.4018999999971,
+        "errors": 0
+      },
+      {
+        "slug": "fps",
+        "count": 9,
+        "elapsedMs": 270.1560000000027,
+        "errors": 0
+      },
+      {
+        "slug": "fresh-smooth",
+        "count": 102,
+        "elapsedMs": 1748.866399999999,
+        "errors": 0
+      },
+      {
+        "slug": "aged",
+        "count": 189,
+        "elapsedMs": 5867.198499999999,
+        "errors": 4
+      },
+      {
+        "slug": "create_plus",
+        "count": 286,
+        "elapsedMs": 9397.868100000007,
+        "errors": 0
+      },
+      {
+        "slug": "remarkably",
+        "count": 30,
+        "elapsedMs": 849.0817999999999,
+        "errors": 0
+      },
+      {
+        "slug": "rso",
+        "count": 80,
+        "elapsedMs": 2058.282899999991,
+        "errors": 0
+      },
+      {
+        "slug": "skyblocker-modpack",
+        "count": 30,
+        "elapsedMs": 497.47939999999653,
+        "errors": 0
+      },
+      {
+        "slug": "hoplite-for-lunar-client",
+        "count": 14,
+        "elapsedMs": 385.8561000000045,
+        "errors": 0
+      },
+      {
+        "slug": "realisticcraft",
+        "count": 58,
+        "elapsedMs": 601.9867999999988,
+        "errors": 0
+      },
+      {
+        "slug": "backroomsff",
+        "count": 47,
+        "elapsedMs": 565.975099999996,
+        "errors": 0
+      },
+      {
+        "slug": "brasil-cobblemon-mobile",
+        "count": 26,
+        "elapsedMs": 3457.1510000000126,
+        "errors": 0
+      },
+      {
+        "slug": "distant-horizons-iris-shaders",
+        "count": 18,
+        "elapsedMs": 463.49860000000626,
+        "errors": 0
+      },
+      {
+        "slug": "the-horrors-in-the-fog",
+        "count": 75,
+        "elapsedMs": 1820.6462000000029,
+        "errors": 0
+      },
+      {
+        "slug": "svc-for-lunar-client",
+        "count": 6,
+        "elapsedMs": 198.24490000000515,
+        "errors": 0
+      },
+      {
+        "slug": "optifine-for-fabric",
+        "count": 68,
+        "elapsedMs": 745.732600000003,
+        "errors": 0
+      },
+      {
+        "slug": "optimized-fps",
+        "count": 18,
+        "elapsedMs": 260.03229999999166,
+        "errors": 0
+      },
+      {
+        "slug": "spunky-boost",
+        "count": 27,
+        "elapsedMs": 324.07050000000163,
+        "errors": 0
+      },
+      {
+        "slug": "dwellers-modpack",
+        "count": 54,
+        "elapsedMs": 728.9927000000025,
+        "errors": 0
+      },
+      {
+        "slug": "vulkan-optimized",
+        "count": 25,
+        "elapsedMs": 227.7514999999985,
+        "errors": 0
+      },
+      {
+        "slug": "legacy-minecraft",
+        "count": 88,
+        "elapsedMs": 1207.9324999999953,
+        "errors": 0
+      },
+      {
+        "slug": "skyblock-plus",
+        "count": 6,
+        "elapsedMs": 72.0283000000054,
+        "errors": 0
+      },
+      {
+        "slug": "plo",
+        "count": 31,
+        "elapsedMs": 332.3838000000105,
+        "errors": 0
+      },
+      {
+        "slug": "wynncraft-for-lunar-client",
+        "count": 15,
+        "elapsedMs": 346.1055000000051,
+        "errors": 0
+      },
+      {
+        "slug": "mcc-island-for-lunar-client",
+        "count": 12,
+        "elapsedMs": 200.5911999999953,
+        "errors": 0
+      },
+      {
+        "slug": "performium-was-taken",
+        "count": 36,
+        "elapsedMs": 508.42510000000766,
+        "errors": 0
+      },
+      {
+        "slug": "spunky-optimized",
+        "count": 30,
+        "elapsedMs": 273.1545000000042,
+        "errors": 0
+      },
+      {
+        "slug": "keo-optimized",
+        "count": 21,
+        "elapsedMs": 272.2936999999947,
+        "errors": 0
+      },
+      {
+        "slug": "optimizationn",
+        "count": 16,
+        "elapsedMs": 194.47990000000573,
+        "errors": 0
+      },
+      {
+        "slug": "blockfront-mod-pack",
+        "count": 2,
+        "elapsedMs": 759.886400000003,
+        "errors": 0
+      },
+      {
+        "slug": "ukupvp",
+        "count": 44,
+        "elapsedMs": 529.4869999999937,
+        "errors": 0
+      },
+      {
+        "slug": "minimalcreate",
+        "count": 13,
+        "elapsedMs": 1495.2432000000117,
+        "errors": 0
+      },
+      {
+        "slug": "rapid_optimization",
+        "count": 21,
+        "elapsedMs": 262.096000000005,
+        "errors": 0
+      },
+      {
+        "slug": "heropack-verse-fiskheroes-server",
+        "count": 5,
+        "elapsedMs": 225.86939999999595,
+        "errors": 0
+      },
+      {
+        "slug": "additive",
+        "count": 57,
+        "elapsedMs": 700.6639999999898,
+        "errors": 0
+      },
+      {
+        "slug": "hypixel-skyblock-for-lunar-client",
+        "count": 17,
+        "elapsedMs": 939.6330000000016,
+        "errors": 0
+      },
+      {
+        "slug": "kimetsunoyaiba",
+        "count": 57,
+        "elapsedMs": 5364.720100000006,
+        "errors": 0
+      },
+      {
+        "slug": "adrenaline",
+        "count": 29,
+        "elapsedMs": 546.6009999999951,
+        "errors": 0
+      }
+    ],
+    "coverage": {
+      "recognized": 2585,
+      "withoutMetadata": 10,
+      "withErrors": 19
+    }
+  },
+  "unique": 2595,
+  "mismatches": [
+    {
+      "hash": "247d9842ffb5ba27ba88f40b5b44193e0321a523",
+      "xnlc": [],
+      "xmcl": [
+        {
+          "id": "ears",
+          "version": "2.2.1-d",
+          "loader": "fabric",
+          "jsonDigest": "eb13d425665d2e7b78a2b6e3b7ace123bda67bba76f373a0694cb27dd9f549aa"
+        },
+        {
+          "id": "ears",
+          "version": "2.2.1-d",
+          "loader": "neoforge"
+        }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "hash": "044872033237c62ff720b939ff610ba4817e182e",
+      "xnlc": [
+        "INVALID_METADATA: JSON Parse error: Unterminated string"
+      ],
+      "xmcl": []
+    },
+    {
+      "hash": "19627abbc7329f92a3e8a01f0d8085c82496139b",
+      "xnlc": [
+        "INVALID_METADATA: TOML Parse error: Expected '=' after a key but found ':'",
+        "INVALID_METADATA: TOML Parse error: Expected '=' after a key but found ':'"
+      ],
+      "xmcl": [
+        "forge: Error: Invalid TOML document: incomplete key-value: cannot find end of key\n\n27:  \"txnilib\": \"*\",\n     ^\n",
+        "neoforge: Error: Invalid TOML document: incomplete key-value: cannot find end of key\n\n27:  \"txnilib\": \"*\",\n     ^\n"
+      ]
+    },
+    {
+      "hash": "245263174cf0b745e6651d888fedb99292968781",
+      "xnlc": [
+        "INVALID_METADATA: TOML Parse error: Expected '=' after a key but found ':'",
+        "INVALID_METADATA: TOML Parse error: Expected '=' after a key but found ':'"
+      ],
+      "xmcl": [
+        "forge: Error: Invalid TOML document: incomplete key-value: cannot find end of key\n\n27:  \"txnilib\": \"*\",\n     ^\n",
+        "neoforge: Error: Invalid TOML document: incomplete key-value: cannot find end of key\n\n27:  \"txnilib\": \"*\",\n     ^\n"
+      ]
+    },
+    {
+      "hash": "247d9842ffb5ba27ba88f40b5b44193e0321a523",
+      "xnlc": [
+        "ParserError: Unsafe or duplicate entry name"
+      ],
+      "xmcl": []
+    },
+    {
+      "hash": "2a20c6c65a6baea552b1a667c2d2b08074eed179",
+      "xnlc": [
+        "INVALID_METADATA: TOML Parse error: Expected '=' after a key but found ':'",
+        "INVALID_METADATA: TOML Parse error: Expected '=' after a key but found ':'"
+      ],
+      "xmcl": [
+        "forge: Error: Invalid TOML document: incomplete key-value: cannot find end of key\n\n27:  \"txnilib\": \"*\",\n     ^\n",
+        "neoforge: Error: Invalid TOML document: incomplete key-value: cannot find end of key\n\n27:  \"txnilib\": \"*\",\n     ^\n"
+      ]
+    },
+    {
+      "hash": "33cfda42d642db4854c3617b75f511669ff43d6b",
+      "xnlc": [
+        "INVALID_METADATA: TOML Parse error: Expected a newline or end of file after a key/value pair",
+        "INVALID_METADATA: TOML Parse error: Expected a newline or end of file after a key/value pair"
+      ],
+      "xmcl": [
+        "forge: Error: Invalid TOML document: each key-value declaration must be followed by an end-of-line\n\n16:      mandatory = true\n17:      versionRange = \"[1.21.1\", \"configurable\": \"~3.5.2,)\"\n                                 ^\n18:      ordering = \"NONE\"\n",
+        "neoforge: Error: Invalid TOML document: each key-value declaration must be followed by an end-of-line\n\n22:      type = \"required\"\n23:      versionRange = \"[1.21.1\", \"configurable\": \"~3.5.2,)\"\n                                 ^\n"
+      ]
+    },
+    {
+      "hash": "3b270bf23ffec81086c23a78dd473608640b0a96",
+      "xnlc": [
+        "INVALID_METADATA: TOML Parse error: Expected a key but found '$'"
+      ],
+      "xmcl": [
+        "forge: Error: Invalid TOML document: only letter, numbers, dashes and underscores are allowed in keys\n\n14:  [[dependencies.${mod_id}]]\n                    ^\n15:  modId = \"forge\"\n"
+      ]
+    },
+    {
+      "hash": "3f7ced13e94394b12cb6d6092aba7cf0d884b748",
+      "xnlc": [
+        "INVALID_METADATA: TOML Parse error: Expected '=' after a key but found ':'",
+        "INVALID_METADATA: TOML Parse error: Expected '=' after a key but found ':'"
+      ],
+      "xmcl": [
+        "forge: Error: Invalid TOML document: incomplete key-value: cannot find end of key\n\n27:  \"txnilib\": \"*\",\n     ^\n",
+        "neoforge: Error: Invalid TOML document: incomplete key-value: cannot find end of key\n\n27:  \"txnilib\": \"*\",\n     ^\n"
+      ]
+    },
+    {
+      "hash": "4a7cea6a3f3e54189732fea10177097431fa0b4a",
+      "xnlc": [
+        "INVALID_METADATA: TOML Parse error: Expected '=' after a key but found ':'",
+        "INVALID_METADATA: TOML Parse error: Expected '=' after a key but found ':'"
+      ],
+      "xmcl": [
+        "forge: Error: Invalid TOML document: incomplete key-value: cannot find end of key\n\n27:  \"txnilib\": \"*\",\n     ^\n",
+        "neoforge: Error: Invalid TOML document: incomplete key-value: cannot find end of key\n\n27:  \"txnilib\": \"*\",\n     ^\n"
+      ]
+    },
+    {
+      "hash": "570c0a23abb0536fbdb8fada9b755e2c3fa12bdd",
+      "xnlc": [
+        "INVALID_METADATA: TOML Parse error: Cannot redefine key 'displayName'"
+      ],
+      "xmcl": [
+        "neoforge: Error: Invalid TOML document: trying to redefine an already defined table or value\n\n10:  displayName=\"Pack Analytics\"\n11:  displayName=\"Pack Analytics\"\n     ^\n12:  authors=\"Toni\"\n"
+      ]
+    },
+    {
+      "hash": "68169bc579b9fb275156fd2bd1dbf96fc0ef2bfe",
+      "xnlc": [
+        "INVALID_METADATA: TOML Parse error: Expected '=' after a key but found ':'",
+        "INVALID_METADATA: TOML Parse error: Expected '=' after a key but found ':'"
+      ],
+      "xmcl": [
+        "forge: Error: Invalid TOML document: incomplete key-value: cannot find end of key\n\n27:  \"txnilib\": \"*\",\n     ^\n",
+        "neoforge: Error: Invalid TOML document: incomplete key-value: cannot find end of key\n\n27:  \"txnilib\": \"*\",\n     ^\n"
+      ]
+    },
+    {
+      "hash": "68fa13ae589af7ab72ddd8b9dd638f3b0b943947",
+      "xnlc": [
+        "INVALID_METADATA: TOML Parse error: Expected a key but found '$'",
+        "INVALID_METADATA: TOML Parse error: Expected a key but found '$'"
+      ],
+      "xmcl": [
+        "forge: Error: Invalid TOML document: only letter, numbers, dashes and underscores are allowed in keys\n\n43:  # A dependency - use the . to indicate dependency for a specific modid. Dependencies are optional.\n44:  [[dependencies.${mod_id}]] #optional\n                    ^\n45:      # the modid of the dependency\n",
+        "neoforge: Error: Invalid TOML document: only letter, numbers, dashes and underscores are allowed in keys\n\n67:  # A dependency - use the . to indicate dependency for a specific modid. Dependencies are optional.\n68:  [[dependencies.${mod_id}]] #optional\n                    ^\n69:      # the modid of the dependency\n"
+      ]
+    },
+    {
+      "hash": "a06891e5ccf068742155c0dca794e52ec1a85ea3",
+      "xnlc": [
+        "INVALID_METADATA: TOML Parse error: Expected '=' after a key but found ':'",
+        "INVALID_METADATA: TOML Parse error: Expected '=' after a key but found ':'"
+      ],
+      "xmcl": [
+        "forge: Error: Invalid TOML document: incomplete key-value: cannot find end of key\n\n27:  \"txnilib\": \"*\",\n     ^\n",
+        "neoforge: Error: Invalid TOML document: incomplete key-value: cannot find end of key\n\n27:  \"txnilib\": \"*\",\n     ^\n"
+      ]
+    },
+    {
+      "hash": "b01303bdc0be9ed6e253b9d72dcd390725c1e548",
+      "xnlc": [
+        "INVALID_METADATA: TOML Parse error: Expected '=' after a key but found ':'",
+        "INVALID_METADATA: TOML Parse error: Expected '=' after a key but found ':'"
+      ],
+      "xmcl": [
+        "forge: Error: Invalid TOML document: incomplete key-value: cannot find end of key\n\n27:  \"txnilib\": \"*\",\n     ^\n",
+        "neoforge: Error: Invalid TOML document: incomplete key-value: cannot find end of key\n\n27:  \"txnilib\": \"*\",\n     ^\n"
+      ]
+    },
+    {
+      "hash": "b5c974e4bc222c9fee7ce6538766a853038e3f38",
+      "xnlc": [
+        "INVALID_METADATA: TOML Parse error: Expected a key but found '$'",
+        "INVALID_METADATA: TOML Parse error: Expected a key but found '$'"
+      ],
+      "xmcl": [
+        "forge: Error: Invalid TOML document: only letter, numbers, dashes and underscores are allowed in keys\n\n43:  # A dependency - use the . to indicate dependency for a specific modid. Dependencies are optional.\n44:  [[dependencies.${mod_id}]] #optional\n                    ^\n45:      # the modid of the dependency\n",
+        "neoforge: Error: Invalid TOML document: only letter, numbers, dashes and underscores are allowed in keys\n\n67:  # A dependency - use the . to indicate dependency for a specific modid. Dependencies are optional.\n68:  [[dependencies.${mod_id}]] #optional\n                    ^\n69:      # the modid of the dependency\n"
+      ]
+    },
+    {
+      "hash": "b9bc57bb6d989315b651ae9dc3eda00e2d71665c",
+      "xnlc": [
+        "INVALID_METADATA: TOML Parse error: Cannot redefine key 'displayName'"
+      ],
+      "xmcl": [
+        "neoforge: Error: Invalid TOML document: trying to redefine an already defined table or value\n\n10:  displayName=\"Pack Analytics\"\n11:  displayName=\"Pack Analytics\"\n     ^\n12:  authors=\"Toni\"\n"
+      ]
+    },
+    {
+      "hash": "d4831ec90d30cc18985f074bf9448c12c225cd67",
+      "xnlc": [
+        "INVALID_METADATA: TOML Parse error: Expected a key but found '$'",
+        "INVALID_METADATA: TOML Parse error: Expected a key but found '$'"
+      ],
+      "xmcl": [
+        "forge: Error: Invalid TOML document: only letter, numbers, dashes and underscores are allowed in keys\n\n43:  # A dependency - use the . to indicate dependency for a specific modid. Dependencies are optional.\n44:  [[dependencies.${mod_id}]] #optional\n                    ^\n45:      # the modid of the dependency\n",
+        "neoforge: Error: Invalid TOML document: only letter, numbers, dashes and underscores are allowed in keys\n\n67:  # A dependency - use the . to indicate dependency for a specific modid. Dependencies are optional.\n68:  [[dependencies.${mod_id}]] #optional\n                    ^\n69:      # the modid of the dependency\n"
+      ]
+    },
+    {
+      "hash": "da0c542dd55b3b5edfdd8bf7a435c8d732613cfc",
+      "xnlc": [
+        "INVALID_METADATA: TOML Parse error: Expected '=' after a key but found ':'",
+        "INVALID_METADATA: TOML Parse error: Expected '=' after a key but found ':'"
+      ],
+      "xmcl": [
+        "forge: Error: Invalid TOML document: incomplete key-value: cannot find end of key\n\n27:  \"txnilib\": \"*\",\n     ^\n",
+        "neoforge: Error: Invalid TOML document: incomplete key-value: cannot find end of key\n\n27:  \"txnilib\": \"*\",\n     ^\n"
+      ]
+    },
+    {
+      "hash": "e3132b8189125ca29e1878a1a5688cbbc4d60995",
+      "xnlc": [
+        "INVALID_METADATA: TOML Parse error: Expected '=' after a key but found ':'",
+        "INVALID_METADATA: TOML Parse error: Expected '=' after a key but found ':'"
+      ],
+      "xmcl": [
+        "forge: Error: Invalid TOML document: incomplete key-value: cannot find end of key\n\n27:  \"txnilib\": \"*\",\n     ^\n",
+        "neoforge: Error: Invalid TOML document: incomplete key-value: cannot find end of key\n\n27:  \"txnilib\": \"*\",\n     ^\n"
+      ]
+    },
+    {
+      "hash": "eb8ae8326e376049b2b55af0178abef170ee45a6",
+      "xnlc": [
+        "INVALID_METADATA: JSON Parse error: Unterminated string"
+      ],
+      "xmcl": []
+    },
+    {
+      "hash": "fb75e093983d1f94e2f6ea026bb87a079d8e00e4",
+      "xnlc": [
+        "INVALID_METADATA: TOML Parse error: Expected a newline or end of file after a key/value pair",
+        "INVALID_METADATA: TOML Parse error: Expected a newline or end of file after a key/value pair"
+      ],
+      "xmcl": [
+        "forge: Error: Invalid TOML document: each key-value declaration must be followed by an end-of-line\n\n16:      mandatory = true\n17:      versionRange = \"[1.21.1\", \"configurable\": \"~3.5.3,)\"\n                                 ^\n18:      ordering = \"NONE\"\n",
+        "neoforge: Error: Invalid TOML document: each key-value declaration must be followed by an end-of-line\n\n22:      type = \"required\"\n23:      versionRange = \"[1.21.1\", \"configurable\": \"~3.5.3,)\"\n                                 ^\n"
+      ]
+    },
+    {
+      "hash": "fe62ff4ff3bc390f0e841bbd868ce219c5caca1e",
+      "xnlc": [
+        "INVALID_METADATA: TOML Parse error: Expected a key but found '$'"
+      ],
+      "xmcl": [
+        "neoforge: Error: Invalid TOML document: only letter, numbers, dashes and underscores are allowed in keys\n\n16:  modId=\"${loader}\"\n17:  ${mandatory_inclusion_field}\n     ^\n18:  versionRange=\"${target_loader}\"\n"
+      ]
+    }
+  ]
+}

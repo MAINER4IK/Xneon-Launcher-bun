@@ -30,6 +30,7 @@ function fixture(overrides = {}, cleanup = {}) {
   const dependencies = {
     "electrobun/main": { Updater, default: { events: { on() {} } }, __esModule: true },
     "../../package.json": { version: "1.0.8-pre2" },
+    "./profile-path": { isPortable: false },
     "../platform/desktop": { app: { emit() {}, getPath: () => "fixture-temp" }, rpcRegistry: { handle: (name, handler) => handlers.set(name, handler) } },
     "../platform/operation-gate": { launcherOperations: gate, withinDeadline: (op, ms, message) => withinDeadline(op, cleanup.timeout ?? ms, message) },
     "../db/core": { closeDatabaseForUpdate: () => order.push("db-close") },

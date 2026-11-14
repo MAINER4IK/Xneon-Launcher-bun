@@ -1,0 +1,35 @@
+{
+  "packages": [
+    {
+      "name": "@xmcl/mod-parser",
+      "version": "3.4.3",
+      "tarball": "https://registry.npmjs.org/@xmcl/mod-parser/-/mod-parser-3.4.3.tgz",
+      "integrity": "sha512-STMeWjCd/7MlNbcj3ocfJOFGxerV+LixphpPuJ/FCiyZBV5ppHfaPEwl1XtoiSNnihTGexblV5k9jSGfsmT5CA=="
+    },
+    {
+      "name": "@xmcl/system",
+      "version": "2.3.0",
+      "tarball": "https://registry.npmjs.org/@xmcl/system/-/system-2.3.0.tgz",
+      "integrity": "sha512-BSGXAIQqOgmV+llRo5vpdgOk7YtTVdrFyglHXNV0eIXeu7zTz8ZnEJlY/aH+WdaKPp/zS9+WjzdMwUL1kQk8lA=="
+    },
+    {
+      "name": "@xmcl/asm",
+      "version": "1.0.1",
+      "tarball": "https://registry.npmjs.org/@xmcl/asm/-/asm-1.0.1.tgz",
+      "integrity": "sha512-7vCVgm1E1IZ2cujiitFk9550Vgu2XAOn1ff90di638fMmTK0XkFMXKsSR/nGZmYKt+XiTMI/0B3TvreqbVjOug=="
+    },
+    {
+      "name": "@xmcl/unzip",
+      "version": "2.2.0",
+      "tarball": "https://registry.npmjs.org/@xmcl/unzip/-/unzip-2.2.0.tgz",
+      "integrity": "sha512-W2Uw1OHtEqnCmxeZXgF+QO+2GKSy4upX+IXXUrNDVnW8a6SkiQV6z5q3fGIM5I9ry3TMP1STZ60mnovhz69uxg=="
+    },
+    {
+      "name": "@xmcl/yauzl",
+      "version": "2.10.0",
+      "tarball": "https://registry.npmjs.org/@xmcl/yauzl/-/yauzl-2.10.0.tgz",
+      "integrity": "sha512-gdbCj64NQnDiInFw7WOvvaLusT5KxT/9SXSKJB6NFLMmU8xtC4bv7gXtD6a1YCiKKBH8bTWjT4gxEvDOCAYJ9Q=="
+    }
+  ],
+  "manifestChanges": "main ./index.ts → ./dist/index.js where necessary; dist code unchanged"
+}

@@ -1,0 +1,74 @@
+[
+  {
+    "project": "ambientsounds",
+    "versionId": "LFUkYKC1",
+    "url": "https://cdn.modrinth.com/data/fM515JnW/versions/LFUkYKC1/AmbientSounds_FABRIC_v6.3.11_mc26.3.jar",
+    "filename": "AmbientSounds_FABRIC_v6.3.11_mc26.3.jar",
+    "size": 84825097,
+    "sha1": "fff553cf5aef69026b1b25d1435da39e9097a2f3",
+    "formats": [
+      "neoforge",
+      "fabric",
+      "resourcepack"
+    ],
+    "mods": [
+      {
+        "loader": "fabric",
+        "id": "ambientsounds",
+        "version": "6.3.11"
+      },
+      {
+        "loader": "neoforge",
+        "id": "ambientsounds",
+        "version": "6.3.11"
+      },
+      {
+        "loader": "resourcepack"
+      }
+    ],
+    "diagnostics": []
+  },
+  {
+    "project": "biomes-o-plenty",
+    "versionId": "sbAVJ5Mn",
+    "url": "https://cdn.modrinth.com/data/HXF82T3G/versions/sbAVJ5Mn/BiomesOPlenty-fabric-26.3-26.3.0.0.16.jar",
+    "filename": "BiomesOPlenty-fabric-26.3-26.3.0.0.16.jar",
+    "size": 23204563,
+    "sha1": "6b96996e5daea79d5c08632a28092995438e2f9d",
+    "formats": [
+      "fabric",
+      "resourcepack"
+    ],
+    "mods": [
+      {
+        "loader": "fabric",
+        "id": "biomesoplenty",
+        "version": "26.3.0.0.16"
+      },
+      {
+        "loader": "resourcepack",
+        "version": "46"
+      }
+    ],
+    "diagnostics": []
+  },
+  {
+    "project": "cobblemon",
+    "versionId": "PdOzYHKU",
+    "url": "https://cdn.modrinth.com/data/MdwFAVRL/versions/PdOzYHKU/Cobblemon-fabric-1.8.4%2B1.21.1.jar",
+    "filename": "Cobblemon-fabric-1.8.4+1.21.1.jar",
+    "size": 139966403,
+    "sha1": "587973321ae6d0762b38a2e19632f5cfdce7c2df",
+    "formats": [
+      "fabric"
+    ],
+    "mods": [
+      {
+        "loader": "fabric",
+        "id": "cobblemon",
+        "version": "1.8.4+1.21.1"
+      }
+    ],
+    "diagnostics": []
+  }
+]
