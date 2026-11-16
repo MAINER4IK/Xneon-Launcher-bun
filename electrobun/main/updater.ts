@@ -13,6 +13,7 @@ import { stopMcpConnections } from "./agent-mcp"
 import { xnConnectManager } from "./xn-connect-manager"
 import { isLaunchActive } from "./minecraft-core"
 import { sendToRenderer } from "./runtime"
+import { launcherShutdown } from "../platform/shutdown"
 
 type UpdateChannel = "stable" | "beta"
 let available: VerifiedUpdate | null = null
@@ -69,7 +70,7 @@ export function registerUpdater() {
   }
 
   Electrobun.events.on("before-quit", event => {
-    if (launcherOperations.blocked && !nativeQuitAllowed) event.response = { allow: false }
+    if (launcherOperations.blocked && !nativeQuitAllowed && !launcherShutdown.exiting) event.response = { allow: false }
   })
   Updater.onStatusChange(({ status }) => {
     if (installing && status === "launching-new-version") restartRequested = true
@@ -182,6 +183,8 @@ export function registerUpdater() {
         10_000,
         "MCP or relay shutdown timed out.",
       )
+      const cleanup = await launcherShutdown.prepare("update")
+      if (cleanup.status !== "completed" || cleanup.failed.length || cleanup.timedOut.length) throw new Error("Update cleanup did not finish successfully.")
       controller.signal.throwIfAborted()
       if (!(await readPreparedRecord(prepared.file)).equals(prepared.bytes)) throw new Error("Prepared update changed after verification.")
       controller.signal.throwIfAborted()
@@ -198,6 +201,7 @@ export function registerUpdater() {
     } catch (error) {
       restartRequested = false
       nativeQuitAllowed = false
+      if (launcherShutdown.finished) launcherShutdown.resetAfterCancelledUpdate()
       if (databaseClosed) {
         try {
           await initDatabase()
