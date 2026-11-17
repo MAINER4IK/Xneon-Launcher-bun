@@ -3,14 +3,14 @@ import { appIdentifier } from "./app-identity"
 
 const MAX_MANIFEST_BYTES = 64 * 1024
 const MAX_ARCHIVE_BYTES = 2 * 1024 ** 3
-const versionPattern = /^(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})(?:-pre([1-9]\d{0,8}))?$/
+const versionPattern = /^(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})(?:-(pre|beta)([1-9]\d{0,8}))?$/
 
 type UpdateChannel = "stable" | "canary"
 
 function releaseVersion(value: unknown): number[] {
   const match = typeof value === "string" ? versionPattern.exec(value) : null
   if (!match || match[0] !== value) throw new Error("Invalid update version")
-  return [Number(match[1]), Number(match[2]), Number(match[3]), match[4] ? Number(match[4]) : Infinity]
+  return [Number(match[1]), Number(match[2]), Number(match[3]), match[4] ? (match[4] === "beta" ? 0 : 1) : Infinity, Number(match[5] ?? 0)]
 }
 
 export function compareReleaseVersions(a: unknown, b: unknown): number {

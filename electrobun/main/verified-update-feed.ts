@@ -12,7 +12,7 @@ export type VerifiedUpdate = { manifest: Manifest; archiveUrl: string }
 const repository = "MAINER4IK/Xneon-Launcher-bun"
 const releaseList = `https://api.github.com/repos/${repository}/releases?per_page=30`
 const assetHosts = new Set(["release-assets.githubusercontent.com", "objects.githubusercontent.com"])
-const versionTag = /^v(?:0|[1-9]\d{0,8})\.(?:0|[1-9]\d{0,8})\.(?:0|[1-9]\d{0,8})(?:-pre[1-9]\d{0,8})?$/
+const versionTag = /^v(?:0|[1-9]\d{0,8})\.(?:0|[1-9]\d{0,8})\.(?:0|[1-9]\d{0,8})(?:-(?:pre|beta)[1-9]\d{0,8})?$/
 
 async function get(url: string, allowAssetRedirects: boolean, signal: AbortSignal): Promise<Response> {
   for (let hop = 0; hop <= 4; hop++) {
@@ -55,7 +55,7 @@ async function readBounded(response: Response, maximum: number): Promise<Buffer>
 
 /** Канал задаёт сам релиз: prerelease публикуется как canary, обычный — как stable. */
 export function releaseChannelOf(version: string): PackageChannel {
-  return version.includes("-pre") ? "canary" : "stable"
+  return /-(?:pre|beta)\d+$/.test(version) ? "canary" : "stable"
 }
 
 /** Пакет нельзя обновить в другой канал, поэтому stable игнорирует beta-настройку. */
@@ -69,7 +69,7 @@ export function selectUpdateTag(releases: unknown, current: string, preference: 
     if (!item || typeof item.tag_name !== "string" || !versionTag.test(item.tag_name) ||
         item.draft !== false || typeof item.prerelease !== "boolean") return []
     const version = item.tag_name.slice(1)
-    if (item.prerelease !== version.includes("-pre") || (preference === "stable" && item.prerelease)) return []
+    if (item.prerelease !== (releaseChannelOf(version) === "canary") || (preference === "stable" && item.prerelease)) return []
     return [version]
   }).sort((a, b) => compareReleaseVersions(b, a))
   return eligible.find(version => compareReleaseVersions(version, current) > 0) ?? null
