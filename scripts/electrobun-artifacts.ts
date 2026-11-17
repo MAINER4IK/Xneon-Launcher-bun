@@ -5,6 +5,7 @@ import { spawnSync } from "node:child_process"
 import path from "node:path"
 import packageJson from "../package.json"
 import { appIdentifier } from "../electrobun/main/app-identity"
+import { APP_NAME } from "../lib/app-meta"
 import { expectedUpdateBaseUrl, updatePublicKeys } from "../electrobun/main/update-public-keys"
 import { listArchiveEntries, readArchiveEntry } from "../packages/xnlc-archives/src/index"
 import { validateBundleCredentials, windowsInstaller, windowsX64 } from "./windows-candidate-validation"
@@ -117,12 +118,12 @@ export async function inspectElectrobunRelease(directory: string, options: Optio
     const members = tar(tarFile).toString().trim().split(/\r?\n/)
     assert.equal(new Set(members).size, members.length, "Duplicate native archive entries")
     // macOS сохраняет display name с пробелом в .app; имя tar.zst SDK нормализует.
-    const bundle = options.platform === "macos" ? "Xneon Launcher" + (options.channel === "stable" ? "" : "-" + options.channel) + ".app" : value.app
+    const bundle = options.platform === "macos" ? APP_NAME + (options.channel === "stable" ? "" : "-" + options.channel) + ".app" : value.app
     for (const entry of members) assert.ok((entry === bundle || entry.startsWith(bundle + "/")) && !/(?:^|\/)\.\.(?:\/|$)|[\\:\u0000-\u001f]/.test(entry) && !forbidden.test(entry), "Forbidden native bundle entry: " + entry)
     const resources = bundle + (options.platform === "macos" ? "/Contents/Resources/" : "/Resources/")
     const bin = bundle + (options.platform === "macos" ? "/Contents/MacOS/" : "/bin/")
     const local = JSON.parse(tar(tarFile, resources + "version.json").toString())
-    assert.equal(local.displayName, "Xneon Launcher")
+    assert.equal(local.displayName, APP_NAME)
     for (const key of ["identifier", "version", "channel", "hash"]) assert.equal(local[key], current[key], "Unexpected bundled " + key)
     assert.equal(local.baseUrl, options.platform === "win" ? expectedUpdateBaseUrl(options.channel as "stable" | "canary") : "", "Unexpected native update feed")
     for (const executable of ["launcher", "bun"]) validateNativeExecutable(tar(tarFile, bin + executable + (options.platform === "win" ? ".exe" : "")), options.platform, options.arch)
@@ -138,7 +139,7 @@ export async function inspectElectrobunRelease(directory: string, options: Optio
       assert.ok(!main.includes("XNLC_UPDATE_PRIVATE_KEY"), "Signing code must not be bundled")
       const zipFile = path.join(directory, value.installer)
       const entries = (await listArchiveEntries(zipFile)).filter(entry => !entry.directory).map(entry => entry.name).sort()
-      const stem = "Xneon Launcher-Setup" + (options.channel === "stable" ? "" : "-" + options.channel)
+      const stem = APP_NAME + "-Setup" + (options.channel === "stable" ? "" : "-" + options.channel)
       assert.deepEqual(entries, [stem + ".exe", `.installer/${stem}.metadata.json`, `.installer/${stem}.tar.zst`].sort(), "Unexpected native Setup ZIP layout")
       const entry = async (name: string) => {
         const bytes = await readArchiveEntry(zipFile, name, { maxEntrySize: limit, maxTotalSize: limit })
@@ -147,7 +148,7 @@ export async function inspectElectrobunRelease(directory: string, options: Optio
       }
       assert.equal(sha256(await entry(`.installer/${stem}.tar.zst`)), sha256(compressed), "Setup payload differs from update archive")
       const setup = JSON.parse((await entry(`.installer/${stem}.metadata.json`)).toString())
-      assert.equal(setup.name, "Xneon Launcher")
+      assert.equal(setup.name, APP_NAME)
       for (const key of ["identifier", "channel", "hash"]) assert.equal(setup[key], current[key], "Unexpected Setup " + key)
       windowsX64(await entry(stem + ".exe"))
       if (options.nsis) windowsInstaller(await read(value.nsis))
@@ -164,7 +165,7 @@ export async function inspectElectrobunRelease(directory: string, options: Optio
       const metadataOffset = installer.lastIndexOf(metadataMarker, archiveOffset - metadataMarker.length)
       assert.ok(metadataOffset > 0 && archiveOffset - metadataOffset < 512 * 1024, "Native Linux installer metadata missing")
       const setup = JSON.parse(installer.subarray(metadataOffset + metadataMarker.length, archiveOffset).toString())
-      assert.equal(setup.name, "Xneon Launcher")
+      assert.equal(setup.name, APP_NAME)
       for (const key of ["identifier", "channel", "hash"]) assert.equal(setup[key], current[key], "Unexpected Linux Setup " + key)
       assert.equal(sha256(installer.subarray(-compressed.length)), sha256(compressed), "Native Linux installer payload differs")
     }
