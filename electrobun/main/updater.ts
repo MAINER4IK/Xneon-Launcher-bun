@@ -14,6 +14,7 @@ import { xnConnectManager } from "./xn-connect-manager"
 import { isLaunchActive } from "./minecraft-core"
 import { sendToRenderer } from "./runtime"
 import { launcherShutdown } from "../platform/shutdown"
+import { resolveUpdatePreference } from "./update-preference"
 
 type UpdateChannel = "stable" | "beta"
 let available: VerifiedUpdate | null = null
@@ -42,8 +43,13 @@ function updateError(error: unknown) {
 export function registerUpdater() {
   const readChannel = async (): Promise<UpdateChannel> => {
     const saved = await dbHelpers.getSetting("launcherUpdateChannel")
-    if (saved === "stable" || saved === "beta") return saved
-    return (await Updater.getLocalInfo()).channel === "canary" ? "beta" : "stable"
+    const savedVersion = await dbHelpers.getSetting("launcherUpdateChannelVersion")
+    const channel = resolveUpdatePreference(packageJson.version, savedVersion, saved)
+    if (savedVersion !== packageJson.version || saved !== channel) {
+      await dbHelpers.setSetting("launcherUpdateChannel", channel)
+      await dbHelpers.setSetting("launcherUpdateChannelVersion", packageJson.version)
+    }
+    return channel
   }
   rpcRegistry.handle("update:get-channel", readChannel)
   rpcRegistry.handle("update:set-channel", async (_event, channel: UpdateChannel) => {
@@ -52,6 +58,7 @@ export function registerUpdater() {
     changingChannel = true
     try {
       await dbHelpers.setSetting("launcherUpdateChannel", channel)
+      await dbHelpers.setSetting("launcherUpdateChannelVersion", packageJson.version)
       available = null
       downloaded = false
       preparedRecord = undefined
