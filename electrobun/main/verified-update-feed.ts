@@ -53,6 +53,16 @@ async function readBounded(response: Response, maximum: number): Promise<Buffer>
   }
 }
 
+/** Канал задаёт сам релиз: prerelease публикуется как canary, обычный — как stable. */
+export function releaseChannelOf(version: string): PackageChannel {
+  return version.includes("-pre") ? "canary" : "stable"
+}
+
+/** Пакет нельзя обновить в другой канал, поэтому stable игнорирует beta-настройку. */
+export function updatePreferenceFor(channel: PackageChannel, preference: UpdatePreference): UpdatePreference {
+  return channel === "canary" ? preference : "stable"
+}
+
 export function selectUpdateTag(releases: unknown, current: string, preference: UpdatePreference) {
   if (!Array.isArray(releases)) throw new Error("Invalid GitHub release list")
   const eligible = releases.flatMap(item => {
@@ -69,8 +79,11 @@ export async function discoverVerifiedUpdate(current: string, channel: PackageCh
   if (Object.keys(updatePublicKeys).length === 0) throw new Error("Trusted update signing keys are not configured")
   const signal = AbortSignal.timeout(45_000)
   const releases = JSON.parse((await readBounded(await get(releaseList, false, signal), 2 * 1024 ** 2)).toString("utf8"))
-  const version = selectUpdateTag(releases, current, preference)
+  const version = selectUpdateTag(releases, current, updatePreferenceFor(channel, preference))
   if (!version) return null
+  // Подписанный манифест привязан к каналу установленного пакета, поэтому каналы не смешиваются:
+  // canary-сборка обновляется только из prerelease, stable — только из стабильного релиза.
+  if (releaseChannelOf(version) !== channel) return null
   const base = `https://github.com/${repository}/releases/download/v${version}/`
   const name = `${channel}-win-x64-update-v2.json`
   const [bytes, signature] = await Promise.all([

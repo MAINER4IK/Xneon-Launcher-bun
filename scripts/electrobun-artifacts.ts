@@ -9,6 +9,7 @@ import { updatePublicKeys, verifiedUpdateBridgeUrl } from "../electrobun/main/up
 import { listArchiveEntries, readArchiveEntry } from "../packages/xnlc-archives/src/index"
 import { validateBundleCredentials, windowsInstaller, windowsX64 } from "./windows-candidate-validation"
 import { checksumText } from "./artifact-checksums"
+import { nativeTarExecutable } from "./native-tar"
 
 type Options = {
   platform: "win" | "macos" | "linux"
@@ -32,7 +33,7 @@ function identity(options: Options) {
   const installerPrefix = options.channel === "stable" ? `${options.platform}-${options.arch}` : prefix
   const installer = options.platform === "win" ? `${installerPrefix}-XneonLauncher-Setup${suffix}.zip`
     : options.platform === "macos" ? `${installerPrefix}-${app}.dmg` : `${installerPrefix}-${app}-Setup.tar.gz`
-  return { version, app, prefix, installer, archive: `${prefix}-${app}.tar.zst`, nsis: `xneon-launcher-${version}-win-x64.exe` }
+  return { version, app, prefix, installer, archive: `${prefix}-${app}${options.platform === "macos" ? ".app" : ""}.tar.zst`, nsis: `xneon-launcher-${version}-win-x64.exe` }
 }
 
 /** Имена штатного Hutch 0.29 / Electrobun 2.0; содержимое не переупаковывается. */
@@ -101,7 +102,7 @@ export async function inspectElectrobunRelease(directory: string, options: Optio
   const scratch = await mkdtemp(path.resolve(".tmp/electrobun-artifacts-"))
   const tarFile = path.join(scratch, "application.tar")
   const tar = (file: string, entry?: string) => {
-    const result = spawnSync(process.platform === "win32" ? "tar.exe" : "tar", entry ? ["-xOf", file, entry] : ["-tf", file], { maxBuffer: limit })
+    const result = spawnSync(nativeTarExecutable(), entry ? ["-xOf", file, entry] : ["-tf", file], { maxBuffer: limit })
     assert.equal(result.status, 0, "Native archive inspection failed: " + (result.stderr?.toString() ?? ""))
     return Buffer.from(result.stdout)
   }

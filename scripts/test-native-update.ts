@@ -6,6 +6,7 @@ import { createHash, generateKeyPairSync, sign } from "node:crypto"
 import { serveVerifiedUpdate, stageVerifiedArchive } from "../electrobun/main/verified-update-feed"
 import { verifyWindowsUpdateManifest } from "../electrobun/main/verified-update-manifest"
 import { appIdentifier } from "../electrobun/main/app-identity"
+import { nativeTarExecutable } from "./native-tar"
 
 assert.equal(process.platform, "win32")
 const repo = path.resolve(import.meta.dir, "..")
@@ -31,7 +32,7 @@ const app = path.join(channelRoot, "app")
 const bin = path.join(app, "bin")
 if (!childRoot) {
   mkdirSync(app, { recursive: true })
-  const extract = Bun.spawnSync(["tar.exe", "-xf", archive, "-C", app, "--strip-components", "1"])
+  const extract = Bun.spawnSync([nativeTarExecutable(), "-xf", archive, "-C", app, "--strip-components", "1"])
   assert.equal(extract.exitCode, 0, extract.stderr.toString())
   const child = Bun.spawnSync([path.join(bin, "bun.exe"), import.meta.path, channel, root], {
     env: process.env, stdout: "inherit", stderr: "inherit",

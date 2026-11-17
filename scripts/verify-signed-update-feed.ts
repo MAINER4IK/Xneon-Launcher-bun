@@ -8,18 +8,18 @@ import { artifactChecksums, formatChecksums } from "./artifact-checksums"
 
 export async function verifySignedUpdateFeed(directory: string, version = packageJson.version) {
   assert.ok(directory, "Usage: verify-signed-update-feed <candidate>")
-  const expected = new Set([`xneon-launcher-${version}-win-x64.exe`])
+  const releaseChannel = version.includes("-") ? "canary" : "stable"
+  const expected = new Set<string>(releaseChannel === "stable" ? [`xneon-launcher-${version}-win-x64.exe`] : [])
   const artifacts: Array<{ file: string; downloadSize: number; downloadSha256: string }> = []
-  for (const channel of ["stable", "canary"] as const) {
-    const name = `${channel}-win-x64-update-v2.json`
-    const [manifestBytes, envelope] = await Promise.all(
-      [name, name + ".sig"].map(file => readFile(path.join(directory, file))),
-    )
-    const manifest = verifySignedWindowsUpdateManifest(manifestBytes, envelope, updatePublicKeys, "0.0.0", channel, "canary")
-    assert.equal(manifest.version, version)
-    artifacts.push(manifest.artifact)
-    expected.add(name).add(name + ".sig").add(manifest.artifact.file)
-  }
+  // Канал берётся из версии: prerelease публикует canary, обычный релиз — stable.
+  const name = `${releaseChannel}-win-x64-update-v2.json`
+  const [manifestBytes, envelope] = await Promise.all(
+    [name, name + ".sig"].map(file => readFile(path.join(directory, file))),
+  )
+  const manifest = verifySignedWindowsUpdateManifest(manifestBytes, envelope, updatePublicKeys, "0.0.0", releaseChannel, "canary")
+  assert.equal(manifest.version, version)
+  artifacts.push(manifest.artifact)
+  expected.add(name).add(name + ".sig").add(manifest.artifact.file)
   const files = await readdir(directory)
   const hasChecksums = files.includes("SHA256SUMS.txt")
   assert.deepEqual(files.sort(), [...expected, ...(hasChecksums ? ["SHA256SUMS.txt"] : [])].sort(), "Unexpected release attachments")

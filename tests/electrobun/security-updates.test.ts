@@ -4,13 +4,14 @@ import { createHash, generateKeyPairSync, sign } from "node:crypto"
 import { mkdir, mkdtemp, readdir, rm, readFile } from "node:fs/promises"
 import path from "node:path"
 import { describe, test } from "bun:test"
-import { selectUpdateTag, serveVerifiedUpdate, stageVerifiedArchive } from "../../electrobun/main/verified-update-feed.ts"
+import { releaseChannelOf, selectUpdateTag, serveVerifiedUpdate, stageVerifiedArchive, updatePreferenceFor } from "../../electrobun/main/verified-update-feed.ts"
 import { verifySignedWindowsUpdateManifest, verifyWindowsUpdateManifest } from "../../electrobun/main/verified-update-manifest.ts"
 import { appIdentifier } from "../../electrobun/main/app-identity.ts"
 import nodeTest from "node:test"
 import vm from "node:vm"
 import { OperationGate, withinDeadline } from "../../electrobun/platform/operation-gate.ts"
 import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
+import { resolveUpdatePreference } from "../../electrobun/main/update-preference.ts"
 
 {
   describe("verified-update-feed", () => {
@@ -20,6 +21,15 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
       assert.equal(selectUpdateTag(releases, "1.0.8", "beta"), "1.0.9-pre1")
       assert.equal(selectUpdateTag(releases, "1.0.9-pre1", "stable"), null)
       assert.equal(selectUpdateTag([{ ...releases[2], draft: true }], "1.0.8", "beta"), null)
+    })
+
+    test("канал обновления задаёт сам релиз: без -pre только stable", () => {
+      assert.equal(releaseChannelOf("1.0.8"), "stable")
+      assert.equal(releaseChannelOf("1.0.8-pre2"), "canary")
+      // Настройка beta не переключает stable-пакет на canary-манифест.
+      assert.equal(updatePreferenceFor("stable", "beta"), "stable")
+      assert.equal(updatePreferenceFor("canary", "beta"), "beta")
+      assert.equal(updatePreferenceFor("canary", "stable"), "stable")
     })
 
     test("stage checks signed compressed bytes and the bridge serves only that file", async () => {
@@ -116,7 +126,7 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
     const manifest = { version: "1.0.9", hash: "next123", artifact: { file: "stable-win-x64-XneonLauncher.tar.zst" } }
     const info = { updateAvailable: true, updateReady: true, version: manifest.version, hash: manifest.hash, error: "" }
     const local = { channel: "stable", version: "1.0.8-pre2", hash: "old123", baseUrl: "http://127.0.0.1:53749/xneon-verified-update/" }
-    let channel
+    const settings = new Map()
     let prepared = Buffer.from(JSON.stringify({ schema_version: 2, hash: manifest.hash, version: manifest.version, artifact_file: manifest.artifact.file }))
     let emit
     const order = []
@@ -143,8 +153,9 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
       "../platform/shutdown": { launcherShutdown: shutdown },
       "../db/core": { closeDatabaseForUpdate: () => order.push("db-close") },
       "../db": { initDatabase: async () => order.push("db-reopen"), dbHelpers: {
-        getSetting: async () => channel, setSetting: async (_key, value) => { channel = value },
+        getSetting: async key => settings.get(key), setSetting: async (key, value) => { settings.set(key, value) },
       } },
+      "./update-preference": { resolveUpdatePreference },
       "node:path": { join: (...parts) => parts.join("/") },
       "node:fs/promises": {
         lstat: async file => ({ isFile: () => file.endsWith(".json"), isDirectory: () => !file.endsWith(".json"), isSymbolicLink: () => false, size: prepared.length }),
@@ -169,10 +180,20 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
     vm.runInNewContext(source, { module, require: name => dependencies[name], Error, AbortController, AbortSignal, process: { platform: "win32", arch: "x64" } })
     module.exports.registerUpdater()
     return { check: handlers.get("update:check"), install: handlers.get("update:install"),
+      getChannel: handlers.get("update:get-channel"), settings,
       download: handlers.get("update:download"), changeChannel: value => handlers.get("update:set-channel")(null, value),
       changeRecord: () => { prepared = Buffer.from("{}") }, cancel: handlers.get("update:cancel-install"), events, info, emit, gate, order, shutdown, beforeQuit }
   }
   describe("updater", () => {
+    test("канал и версия установки сохраняются независимо, ручной выбор не сбрасывается", async () => {
+      const app = fixture()
+      assert.equal(await app.getChannel(), "beta")
+      assert.equal(app.settings.get("launcherUpdateChannelVersion"), "1.0.8-pre2")
+      await app.changeChannel("stable")
+      assert.equal(await app.getChannel(), "stable")
+      assert.equal(app.settings.get("launcherUpdateChannelVersion"), "1.0.8-pre2")
+    })
+
     test("SDK update ждёт общий cleanup файлов до закрытия БД", async () => {
       const files = Promise.withResolvers(), started = Promise.withResolvers()
       const app = fixture({}, { files: async () => { started.resolve(); await files.promise; app.order.push("files") } })
