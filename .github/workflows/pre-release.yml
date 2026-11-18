@@ -85,7 +85,10 @@ jobs:
     timeout-minutes: 60
     steps:
       - *checkout
-      - *desktop
+      - uses: ./.github/actions/setup
+        with:
+          desktop: 'true'
+          linux-native-build: ${{ runner.os == 'Linux' && 'true' || 'false' }}
       - name: Check release tag and package version before building
         if: startsWith(github.ref, 'refs/tags/v')
         run: bun scripts/ci-pre-release.ts identity
