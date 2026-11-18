@@ -24,3 +24,15 @@ test('allowlist и release notes не требуют отсутствующих 
     assert.doesNotMatch(body, /### macOS|### Linux|logo=apple|logo=linux/)
   }
 })
+
+test('Ubuntu-тесты не скачивают графический SDK; native-сборка подключает его отдельно', async () => {
+  const setup = Bun.YAML.parse(await fs.readFile('.github/actions/setup/action.yml', 'utf8'))
+  const runtime = setup.runs.steps.find(step => step.name === 'Linux test prerequisites')
+  assert.ok(runtime)
+  assert.match(runtime.run, /--no-install-recommends/)
+  assert.match(runtime.run, /libsecret-1-0/)
+  assert.doesNotMatch(runtime.run, /libgtk-3-dev|libwebkit2gtk-4\.1-dev|libayatana-appindicator3-dev/)
+  const native = setup.runs.steps.find(step => step.name === 'Linux native build prerequisites')
+  assert.ok(native.if.includes("inputs.linux-native-build == 'true'"))
+  assert.match(native.run, /libwebkit2gtk-4\.1-dev/)
+})
