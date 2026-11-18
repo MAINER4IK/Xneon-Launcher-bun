@@ -35,8 +35,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - &desktop
-        uses: ./.github/actions/setup
+      - uses: ./.github/actions/setup
         with:
           desktop: 'true'
       - name: Check release channel
