@@ -14,10 +14,8 @@ test('имена установщиков содержат версию, а те
   const { publicationNames } = await pipeline()
   for (const version of ['1.2.3', '1.2.3-pre1']) {
     const names = publicationNames(version)
-    assert.ok(names.includes(`xneon-launcher-${version}-mac-arm64.dmg`))
-    assert.ok(names.includes(`xneon-launcher-${version}-mac-x64.dmg`))
+    assert.ok(!names.some(name => /linux|macos|\.dmg$/.test(name)))
     assert.ok(names.includes(`xneon-launcher-${version}-win-x64-setup.zip`))
-    assert.ok(names.includes(`xneon-launcher-${version}-linux-x64-setup.tar.gz`))
     assert.ok(!names.some(name => /XneonLauncher.*(?:\.dmg|Setup.*\.zip|Setup\.tar\.gz)$/.test(name)))
   }
 })
@@ -80,8 +78,8 @@ test('обычный tag создаёт stable release, -preN создаёт pre
 test('публикация допускает только native + NSIS + portable + подписи, checksums привязаны к точным байтам', async t => {
   const { publicationNames, checksumText, verifyChecksums } = await pipeline()
   const names = publicationNames('1.2.3')
-  for (const name of ['xneon-launcher-1.2.3-win-x64.exe', 'xneon-launcher-1.2.3-win-x64-portable.zip', 'stable-win-x64-update-v2.json.sig', 'xneon-launcher-1.2.3-mac-arm64.dmg', 'xneon-launcher-1.2.3-linux-x64-setup.tar.gz']) assert.ok(names.includes(name), name)
-  for (const name of ['xneon-launcher-1.2.3-amd64.deb', 'xneon-launcher-1.2.3-x86_64.rpm', 'xneon-launcher-1.2.3-x86_64.pacman', 'xneon-launcher-1.2.3-x86_64.AppImage', 'xneon-launcher-1.2.3-x64.tar.xz']) assert.ok(names.includes(name), name)
+  for (const name of ['xneon-launcher-1.2.3-win-x64.exe', 'xneon-launcher-1.2.3-win-x64-portable.zip', 'stable-win-x64-update-v2.json.sig']) assert.ok(names.includes(name), name)
+  assert.ok(!names.some(name => /linux|macos|\.dmg$|\.deb$|\.rpm$|\.pacman$|\.AppImage$|\.tar\.xz$/.test(name)))
   assert.ok(!names.some(name => /latest|blockmap/.test(name)))
   assert.ok(!names.some(name => name.startsWith('canary-')), 'Стабильный релиз не содержит canary-файлов')
   assert.ok(!names.includes('canary-win-x64-update-v2.json.sig'))
@@ -106,11 +104,11 @@ test('prerelease публикует canary и независимый portable: �
   assert.throws(() => assertReleaseChannel('1.2.3', 'canary'), /cannot build/)
   assert.throws(() => assertReleaseChannel('1.2.3-pre1', 'stable'), /cannot build/)
   const names = publicationNames('1.2.3-pre1')
-  for (const name of ['canary-win-x64-update-v2.json', 'canary-win-x64-update-v2.json.sig', 'canary-win-x64-XneonLauncher-canary.tar.zst', 'xneon-launcher-1.2.3-pre1-win-x64-setup.zip', 'xneon-launcher-1.2.3-pre1-mac-arm64.dmg', 'xneon-launcher-1.2.3-pre1-linux-x64-setup.tar.gz']) assert.ok(names.includes(name), name)
+  for (const name of ['canary-win-x64-update-v2.json', 'canary-win-x64-update-v2.json.sig', 'canary-win-x64-XneonLauncher-canary.tar.zst', 'xneon-launcher-1.2.3-pre1-win-x64-setup.zip']) assert.ok(names.includes(name), name)
   assert.ok(!names.some(name => name.startsWith('stable-')), 'Prerelease не содержит stable-файлов')
   assert.ok(!names.some(name => name.endsWith('-win-x64.exe')), 'Prerelease не содержит NSIS-установщик')
   assert.ok(names.includes('xneon-launcher-1.2.3-pre1-win-x64-portable.zip'), 'Portable доступен в canary')
-  assert.ok(names.includes('xneon-launcher-1.2.3-pre1-amd64.deb'), 'Canary тоже публикует системные Linux-пакеты')
+  assert.ok(!names.some(name => /linux|macos|\.deb$/.test(name)), 'Unix-публикация временно отключена и в canary')
 })
 
 test('release и pre-release — отдельные пайплайны со своими каналами, CI только проверяет', async () => {
@@ -167,10 +165,10 @@ test('release и pre-release — отдельные пайплайны со св
   for (const workflow of [release, prerelease]) {
     assert.equal(workflow.jobs.build.needs, 'tests')
     assert.deepEqual(workflow.jobs.release.needs, ['tests', 'build'])
-    assert.equal(workflow.jobs.build.strategy.matrix.include.length, 4)
+    assert.equal(workflow.jobs.build.strategy.matrix.include.length, 1)
     assert.equal(workflow.jobs.build.strategy['fail-fast'], false)
     assert.equal(workflow.jobs.build.strategy['max-parallel'], 3)
-    assert.ok(workflow.jobs.build.strategy.matrix.include.some(item => item.target === 'macos-arm64' && item.runner === 'macos-26' && item.arch === 'arm64' && item.machine === 'arm64'), 'ARM64 uses the documented macos-26 pool without relaxing architecture validation')
+    assert.ok(workflow.jobs.build.strategy.matrix.include.every(item => item.target === 'win-x64' && item.runner === 'windows-2022' && item.arch === 'x64' && item.machine === 'X64'), 'Release temporarily targets only Windows x64')
     assert.ok(workflow.jobs.build.steps.some(item => item.if === "runner.os != 'Linux'" &&
       item.run?.includes('tests/electrobun/platform-desktop.test.ts') &&
       item.run.includes('tests/electrobun/platform-secrets.test.ts') &&
@@ -283,9 +281,6 @@ test('release assembly связывает signed bytes с native выдачей 
   await fs.mkdir(signed, { recursive: true })
   const sets = [
     { platform: 'win', arch: 'x64', channel: 'stable', nsis: true },
-    { platform: 'linux', arch: 'x64', channel: 'stable' },
-    { platform: 'macos', arch: 'arm64', channel: 'stable' },
-    { platform: 'macos', arch: 'x64', channel: 'stable' },
   ]
   for (const options of sets) {
     const source = path.join(input, `native-${options.platform}-${options.arch}-${options.channel}`)
@@ -309,15 +304,17 @@ test('release assembly связывает signed bytes с native выдачей 
   const portableName = 'xneon-launcher-1.2.3-win-x64-portable.zip'
   await fs.writeFile(path.join(portable, portableName), 'separate portable fixture')
   await fs.writeFile(path.join(portable, 'SHA256SUMS.txt'), await checksumText(portable, [portableName]))
-  const packages = path.join(input, 'native-linux-x64-packages')
+  // Unix-проверку сохраняем отдельно, но эти артефакты не входят в текущий релиз.
+  const packages = path.join(directory, 'native-linux-x64-packages')
   await fs.mkdir(packages)
   const packageNames = ['xneon-launcher-1.2.3-amd64.deb', 'xneon-launcher-1.2.3-x86_64.rpm', 'xneon-launcher-1.2.3-x86_64.pacman', 'xneon-launcher-1.2.3-x86_64.AppImage', 'xneon-launcher-1.2.3-x64.tar.xz']
   for (const name of packageNames) await fs.writeFile(path.join(packages, name), linuxPackageFixture(name))
   await fs.writeFile(path.join(packages, 'SHA256SUMS.txt'), await checksumText(packages, packageNames))
+  await release.verifyLinuxPackages(packages, '1.2.3')
   const outsideSigned = path.join(directory, 'signed')
   await fs.rename(signed, outsideSigned)
   await release.checkCandidates(input, '1.2.3')
-  assert.equal(inspections, 4)
+  assert.equal(inspections, 1)
   await assert.rejects(release.checkCandidates(input, '1.2.3-pre1'), /Unexpected/, 'Стабильный набор не проходит canary-проверку')
   await fs.appendFile(path.join(portable, portableName), 'tamper')
   await assert.rejects(release.checkCandidates(input, '1.2.3'), /checksum/i)
@@ -329,8 +326,8 @@ test('release assembly связывает signed bytes с native выдачей 
   inspections = 0
   await verifySignedUpdateFeed(signed, '1.2.3')
   await release.assemblePublication(input, output, '1.2.3')
-  assert.equal(inspections, 8)
-  assert.equal((await fs.readdir(output)).length, 25)
+  assert.equal(inspections, 2)
+  assert.equal((await fs.readdir(output)).length, 8)
   await release.verifyPublication(output, '1.2.3')
   await fs.writeFile(path.join(output, 'unverified.zip'), 'extra')
   await assert.rejects(release.verifyPublication(output, '1.2.3'), /Unexpected/)
@@ -349,9 +346,6 @@ test('release assembly связывает signed bytes с native выдачей 
   await fs.mkdir(canaryInput, { recursive: true })
   for (const options of [
     { platform: 'win', arch: 'x64', channel: 'canary' },
-    { platform: 'linux', arch: 'x64', channel: 'canary' },
-    { platform: 'macos', arch: 'arm64', channel: 'canary' },
-    { platform: 'macos', arch: 'x64', channel: 'canary' },
   ]) {
     const source = path.join(canaryInput, `native-${options.platform}-${options.arch}-canary`)
     await fs.mkdir(source)
@@ -359,11 +353,12 @@ test('release assembly связывает signed bytes с native выдачей 
     for (const name of names) await fs.writeFile(path.join(source, name), 'canary ' + name)
     await fs.writeFile(path.join(source, 'SHA256SUMS.txt'), await checksumText(source, names))
   }
-  const canaryPackages = path.join(canaryInput, 'native-linux-x64-packages')
+  const canaryPackages = path.join(directory, 'canary-linux-packages')
   await fs.mkdir(canaryPackages)
   const canaryPackageNames = ['xneon-launcher-1.2.3-pre1-amd64.deb', 'xneon-launcher-1.2.3-pre1-x86_64.rpm', 'xneon-launcher-1.2.3-pre1-x86_64.pacman', 'xneon-launcher-1.2.3-pre1-x86_64.AppImage', 'xneon-launcher-1.2.3-pre1-x64.tar.xz']
   for (const name of canaryPackageNames) await fs.writeFile(path.join(canaryPackages, name), linuxPackageFixture(name))
   await fs.writeFile(path.join(canaryPackages, 'SHA256SUMS.txt'), await checksumText(canaryPackages, canaryPackageNames))
+  await release.verifyLinuxPackages(canaryPackages, '1.2.3-pre1')
   const canaryPortable = path.join(canaryInput, 'native-win-x64-portable')
   await fs.mkdir(canaryPortable)
   const canaryPortableName = 'xneon-launcher-1.2.3-pre1-win-x64-portable.zip'
