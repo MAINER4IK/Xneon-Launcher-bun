@@ -13,6 +13,19 @@ const MANIFEST_BYTES = 64 * 1024
 const SIGNATURE_BYTES = 1024
 /** GitHub отдаёт ассеты релиза с этих хостов после редиректа с `releases/download/...`. */
 const assetHosts = new Set(["release-assets.githubusercontent.com", "objects.githubusercontent.com"])
+const repository = "MAINER4IK/Xneon-Launcher-bun"
+const releaseDownloadPath = `/${repository}/releases/download/`
+
+/**
+ * `releases/latest/download/...` GitHub сначала перенаправляет на канонический
+ * `github.com/<repo>/releases/download/<tag>/...`, и только затем — на asset-хост.
+ * Промежуточный хоп остаётся внутри нашего репозитория, поэтому он разрешён.
+ */
+export function isAllowedUpdateRedirect(url: URL): boolean {
+  if (url.protocol !== "https:" || url.username || url.password || url.port) return false
+  if (assetHosts.has(url.hostname)) return true
+  return url.hostname === "github.com" && url.pathname.startsWith(releaseDownloadPath)
+}
 
 async function get(url: string, signal: AbortSignal, allowMissing = false): Promise<Response | null> {
   for (let hop = 0; hop <= 4; hop++) {
@@ -30,7 +43,7 @@ async function get(url: string, signal: AbortSignal, allowMissing = false): Prom
     await response.body?.cancel()
     if (!location) throw new Error("Unexpected update redirect without a location")
     const next = new URL(location, url)
-    if (next.protocol !== "https:" || next.username || next.password || next.port || !assetHosts.has(next.hostname)) {
+    if (!isAllowedUpdateRedirect(next)) {
       throw new Error("Update redirect points outside GitHub release assets")
     }
     url = next.href

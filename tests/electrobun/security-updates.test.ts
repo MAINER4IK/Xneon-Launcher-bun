@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { generateKeyPairSync, sign } from "node:crypto"
 import { readFile } from "node:fs/promises"
 import { describe, test } from "bun:test"
-import { installedPreference, manifestUrls, releaseChannelOf } from "../../electrobun/main/verified-update-feed.ts"
+import { installedPreference, isAllowedUpdateRedirect, manifestUrls, releaseChannelOf } from "../../electrobun/main/verified-update-feed.ts"
 import { verifySignedWindowsUpdateManifest, verifyWindowsUpdateManifest } from "../../electrobun/main/verified-update-manifest.ts"
 import { appIdentifier } from "../../electrobun/main/app-identity.ts"
 import nodeTest from "node:test"
@@ -30,6 +30,16 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
       assert.equal(canary.base, "https://github.com/MAINER4IK/Xneon-Launcher-bun/releases/download/canary")
       assert.equal(canary.manifestUrl, canary.base + "/canary-win-x64-update-v2.json")
       assert.equal(canary.signatureUrl, canary.base + "/canary-win-x64-update-v2.json.sig")
+    })
+
+    test("редирект latest/download через канонический тег разрешён, посторонние хосты — нет", () => {
+      assert.equal(isAllowedUpdateRedirect(new URL("https://github.com/MAINER4IK/Xneon-Launcher-bun/releases/download/v1.0.10/stable-win-x64-update-v2.json")), true)
+      assert.equal(isAllowedUpdateRedirect(new URL("https://release-assets.githubusercontent.com/github-production-release-asset/1/2?sp=r")), true)
+      assert.equal(isAllowedUpdateRedirect(new URL("https://objects.githubusercontent.com/x")), true)
+      assert.equal(isAllowedUpdateRedirect(new URL("https://github.com/other/repo/releases/download/v1/x.json")), false)
+      assert.equal(isAllowedUpdateRedirect(new URL("https://evil.example/x.json")), false)
+      assert.equal(isAllowedUpdateRedirect(new URL("http://github.com/MAINER4IK/Xneon-Launcher-bun/releases/download/v1/x.json")), false)
+      assert.equal(isAllowedUpdateRedirect(new URL("https://github.com:8443/MAINER4IK/Xneon-Launcher-bun/releases/download/v1/x.json")), false)
     })
   })
 }
