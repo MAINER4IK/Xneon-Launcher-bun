@@ -46,7 +46,9 @@ bun scripts/electrobun-artifacts.ts check release-electrobun/stable linux x64 st
 ```
 
 `build-electrobun/` и `release-electrobun/` игнорируются Git. В релизе сохраняются
-исходные SDK manifests/tar.zst/installer; Windows NSIS добавляется отдельно.
+исходные SDK manifests/tar.zst/installer; Windows NSIS добавляется отдельно в
+обоих каналах и входит в подписанный манифест (`installer`), поэтому смена канала
+в приложении проверяема.
 Portable — отдельный dev build с `XNEON_BUILD_PORTABLE=1` и `PortableProfile`.
 Native binary headers/version/resources/integrity проверяет artifact validator;
 реальная установка, GUI, keyring/WebView/CEF и update lifecycle требуют OS/VM smoke.

@@ -24,7 +24,7 @@ test('описания релизов содержат Features, Bug Fixes и т
     assert.match(body, /img.shields.io/)
     assert.match(body, new RegExp(`releases/download/v${version}/`))
     assert.doesNotMatch(body, /logo=apple|logo=linux|### macOS|### Linux/)
-    assert.equal(body.includes(`xneon-launcher-${version}-win-x64.exe`), !version.includes('-pre'))
+    assert.equal(body.includes(`xneon-launcher-${version}-win-x64.exe`), true, 'NSIS есть в обоих каналах')
     assert.ok(body.includes('portable.zip'))
   }
 })

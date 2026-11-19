@@ -27,7 +27,7 @@ export function isAllowedUpdateRedirect(url: URL): boolean {
   return url.hostname === "github.com" && url.pathname.startsWith(releaseDownloadPath)
 }
 
-async function get(url: string, signal: AbortSignal, allowMissing = false): Promise<Response | null> {
+export async function updateFeedGet(url: string, signal: AbortSignal, allowMissing = false): Promise<Response | null> {
   for (let hop = 0; hop <= 4; hop++) {
     const response = await fetch(url, { redirect: "manual", signal, headers: { "User-Agent": APP_USER_AGENT } })
     if (![301, 302, 303, 307, 308].includes(response.status)) {
@@ -51,7 +51,7 @@ async function get(url: string, signal: AbortSignal, allowMissing = false): Prom
   throw new Error("Too many update redirects")
 }
 
-async function readBounded(response: Response, maximum: number): Promise<Buffer> {
+export async function updateFeedReadBounded(response: Response, maximum: number): Promise<Buffer> {
   if (!response.body) throw new Error("Empty update response")
   const reader = response.body.getReader()
   const chunks: Uint8Array[] = []
@@ -97,12 +97,12 @@ export async function resolveVerifiedUpdate(currentVersion: string, channel: Pac
   if (Object.keys(updatePublicKeys).length === 0) throw new Error("Trusted update signing keys are not configured")
   const signal = AbortSignal.timeout(45_000)
   const { base, manifestUrl, signatureUrl } = manifestUrls(channel)
-  const manifestResponse = await get(manifestUrl, signal, true)
+  const manifestResponse = await updateFeedGet(manifestUrl, signal, true)
   if (!manifestResponse) return null
-  const bytes = await readBounded(manifestResponse, MANIFEST_BYTES)
-  const signatureResponse = await get(signatureUrl, signal)
+  const bytes = await updateFeedReadBounded(manifestResponse, MANIFEST_BYTES)
+  const signatureResponse = await updateFeedGet(signatureUrl, signal)
   if (!signatureResponse) throw new Error("Update signature is missing")
-  const signature = await readBounded(signatureResponse, SIGNATURE_BYTES)
+  const signature = await updateFeedReadBounded(signatureResponse, SIGNATURE_BYTES)
   const manifest = verifySignedWindowsUpdateManifest(bytes, signature, updatePublicKeys, currentVersion, channel, channel)
   return { manifest, archiveUrl: `${base}/${manifest.artifact.file}` }
 }

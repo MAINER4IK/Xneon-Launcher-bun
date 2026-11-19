@@ -5946,7 +5946,7 @@ export const LAUNCHER_CAPABILITIES: LauncherCapability[] = [
   },
   {
     "method": "updateSetChannel",
-    "signature": "(channel: \"stable\" | \"beta\") => Promise<{ state: \"current\" | \"opened\" | \"error\"; error?: string }>",
+    "signature": "(channel: \"stable\" | \"beta\") => Promise<{ state: \"current\" | \"switching\" | \"error\"; version?: string; error?: string }>",
     "parameters": [
       {
         "name": "channel",

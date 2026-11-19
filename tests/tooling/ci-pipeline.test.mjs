@@ -95,7 +95,7 @@ test('публикация допускает только native + NSIS + porta
   await assert.rejects(verifyChecksums(directory, ['file.zip']), /Unexpected/i)
 })
 
-test('prerelease публикует canary и независимый portable: без NSIS и stable-подписи', async () => {
+test('prerelease публикует canary, NSIS и независимый portable', async () => {
   const { publicationNames, releaseChannel, assertReleaseChannel } = await pipeline()
   assert.equal(releaseChannel('1.2.3'), 'stable')
   assert.equal(releaseChannel('1.2.3-pre1'), 'canary')
@@ -106,7 +106,7 @@ test('prerelease публикует canary и независимый portable: �
   const names = publicationNames('1.2.3-pre1')
   for (const name of ['canary-win-x64-update-v2.json', 'canary-win-x64-update-v2.json.sig', 'canary-win-x64-XneonLauncher-canary.tar.zst', 'xneon-launcher-1.2.3-pre1-win-x64-setup.zip']) assert.ok(names.includes(name), name)
   assert.ok(!names.some(name => name.startsWith('stable-')), 'Prerelease не содержит stable-файлов')
-  assert.ok(!names.some(name => name.endsWith('-win-x64.exe')), 'Prerelease не содержит NSIS-установщик')
+  assert.ok(names.includes('xneon-launcher-1.2.3-pre1-win-x64.exe'), 'Canary тоже публикует NSIS: он переключает канал')
   assert.ok(names.includes('xneon-launcher-1.2.3-pre1-win-x64-portable.zip'), 'Portable доступен в canary')
   assert.ok(!names.some(name => /linux|macos|\.deb$/.test(name)), 'Unix-публикация временно отключена и в canary')
 })
@@ -151,8 +151,8 @@ test('release и pre-release — отдельные пайплайны со св
   const step = (workflow, job, name) => workflow.jobs[job].steps.find(item => item.name === name)
   assert.equal(step(release, 'build', 'Build stable native artifacts (NSIS on Windows only)').run, 'bun run build')
   assert.equal(step(prerelease, 'build', 'Build canary native artifacts').run, 'bun run build:canary')
-  assert.ok(step(release, 'build', 'Ensure NSIS'), 'NSIS остаётся в стабильном канале')
-  assert.ok(!step(prerelease, 'build', 'Ensure NSIS'), 'Пререлиз не ставит NSIS')
+  assert.ok(step(release, 'build', 'Ensure NSIS'), 'NSIS собирается в стабильном канале')
+  assert.ok(step(prerelease, 'build', 'Ensure NSIS'), 'Canary тоже собирает NSIS: им переключается канал')
   assert.ok(step(release, 'build', 'Build and validate independent Portable profile'), 'Portable — stable')
   assert.ok(step(prerelease, 'build', 'Build and validate independent Portable profile'), 'Пререлиз тоже собирает portable')
   assert.ok(step(release, 'build', 'Build Linux distribution packages'), 'deb/rpm/pacman/AppImage/tar.xz')
@@ -194,7 +194,8 @@ test('повторная trusted Ed25519 verification не меняет checksum
   await fs.mkdir(path.join(root, '.tmp'), { recursive: true })
   const directory = await fs.mkdtemp(path.join(root, '.tmp/ci-signatures-'))
   t.after(() => fs.rm(directory, { recursive: true, force: true }))
-  await fs.writeFile(path.join(directory, 'xneon-launcher-1.2.3-win-x64.exe'), 'fixture installer')
+  const installerBytes = Buffer.from('fixture installer')
+  await fs.writeFile(path.join(directory, 'xneon-launcher-1.2.3-win-x64.exe'), installerBytes)
   {
     // Стабильный релиз публикует только stable-манифест; canary проверяется отдельно ниже.
     const channel = 'stable'
@@ -204,6 +205,7 @@ test('повторная trusted Ed25519 verification не меняет checksum
     const file = channel + '-win-x64-XneonLauncher.tar.zst'
     const bytes = Buffer.from(JSON.stringify({ schemaVersion: 1, identifier: appIdentifier, channel,
       version: '1.2.3', platform: 'win', arch: 'x64', hash: 'fixture123',
+      installer: { file: 'xneon-launcher-1.2.3-win-x64.exe', size: installerBytes.length, sha256: createHash('sha256').update(installerBytes).digest('hex') },
       artifact: { file, tarSize: 100, tarSha256: 'a'.repeat(64), downloadSize: archive.length, downloadSha256: hash } }))
     await fs.writeFile(path.join(directory, file), archive)
     await fs.writeFile(path.join(directory, name), bytes)
@@ -216,6 +218,10 @@ test('повторная trusted Ed25519 verification не меняет checksum
   await verifySignedUpdateFeed(directory, '1.2.3')
   assert.ok([...streams.values()].every(count => count === 2), 'A new trust boundary must read the actual bytes again')
   assert.equal(await fs.readFile(path.join(directory, 'SHA256SUMS.txt'), 'utf8'), originalChecksums)
+  const installerPath = path.join(directory, 'xneon-launcher-1.2.3-win-x64.exe')
+  await fs.writeFile(installerPath, 'Fixture installer')
+  await assert.rejects(verifySignedUpdateFeed(directory, '1.2.3'), /Installer hash/, 'Same-size installer tampering must break the signed hash')
+  await fs.writeFile(installerPath, installerBytes)
   await fs.writeFile(path.join(directory, 'SHA256SUMS.txt'), 'tampered')
   await assert.rejects(verifySignedUpdateFeed(directory, '1.2.3'), /checksum/i)
   await fs.writeFile(path.join(directory, 'SHA256SUMS.txt'), originalChecksums)
@@ -289,7 +295,10 @@ test('release assembly связывает signed bytes с native выдачей 
     for (const name of names) await fs.writeFile(path.join(source, name), 'native ' + name)
     if (options.platform === 'win') {
       const archive = await fs.readFile(path.join(source, names[2]))
-      const original = { schemaVersion: 1, identifier: appIdentifier, channel: options.channel, platform: 'win', arch: 'x64', version: '1.2.3', hash: 'fixture123', artifact: { file: names[2], tarSize: 100, tarSha256: 'a'.repeat(64) } }
+      const installer = Buffer.from('native ' + names.at(-1))
+      const original = { schemaVersion: 1, identifier: appIdentifier, channel: options.channel, platform: 'win', arch: 'x64', version: '1.2.3', hash: 'fixture123',
+        installer: { file: names.at(-1), size: installer.length, sha256: createHash('sha256').update(installer).digest('hex') },
+        artifact: { file: names[2], tarSize: 100, tarSha256: 'a'.repeat(64) } }
       await fs.writeFile(path.join(source, names[1]), JSON.stringify(original))
       const bytes = Buffer.from(JSON.stringify({ ...original, artifact: { ...original.artifact, downloadSize: archive.length, downloadSha256: createHash('sha256').update(archive).digest('hex') } }))
       await fs.writeFile(path.join(signed, names[1]), bytes)
@@ -339,13 +348,13 @@ test('release assembly связывает signed bytes с native выдачей 
   await fs.appendFile(path.join(signed, 'xneon-launcher-1.2.3-win-x64.exe'), 'substituted installer')
   const signedFiles = (await fs.readdir(signed)).filter(file => file !== 'SHA256SUMS.txt')
   await fs.writeFile(path.join(signed, 'SHA256SUMS.txt'), await checksumText(signed, signedFiles))
-  await assert.rejects(release.assemblePublication(input, path.join(directory, 'substituted'), '1.2.3'), /Signing changed publication bytes/)
+  await assert.rejects(release.assemblePublication(input, path.join(directory, 'substituted'), '1.2.3'), /Installer (?:hash|size)/, 'Подмена установщика ловится подписанным манифестом')
 
   // Каналы не смешиваются: canary-набор проверяется отдельно со своим portable.
   const canaryInput = path.join(directory, 'canary-input')
   await fs.mkdir(canaryInput, { recursive: true })
   for (const options of [
-    { platform: 'win', arch: 'x64', channel: 'canary' },
+    { platform: 'win', arch: 'x64', channel: 'canary', nsis: true },
   ]) {
     const source = path.join(canaryInput, `native-${options.platform}-${options.arch}-canary`)
     await fs.mkdir(source)

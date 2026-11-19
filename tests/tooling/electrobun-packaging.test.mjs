@@ -61,8 +61,7 @@ test("workflows больше не требуют Electron-артефактов, 
   const release=await read(".github/workflows/release.yml")
   for(const text of ["Ensure NSIS","sign-update-feed.ts","verify-signed-update-feed.ts","environment: pre2-signing","XNLC_UPDATE_PRIVATE_KEY"])assert.ok(release.includes(text),text)
   const prerelease=await read(".github/workflows/pre-release.yml")
-  for(const text of ["build:canary","sign-update-feed.ts","verify-signed-update-feed.ts","environment: pre2-signing","XNLC_UPDATE_PRIVATE_KEY"])assert.ok(prerelease.includes(text),text)
-  assert.doesNotMatch(prerelease,/Ensure NSIS/,'Пререлиз не ставит NSIS')
+  for(const text of ["Ensure NSIS","build:canary","sign-update-feed.ts","verify-signed-update-feed.ts","environment: pre2-signing","XNLC_UPDATE_PRIVATE_KEY"])assert.ok(prerelease.includes(text),text)
 })
 
 test("portable сохраняет отдельный профиль, но не копирует обычный unpacked/NSIS набор",async()=>{
@@ -211,8 +210,8 @@ test("artifact checks сохраняют native delta patches и требуют 
   await assert.rejects(inspectElectrobunRelease(f.input,f.options),/NSIS/)
 })
 
-test("wrapper не теряет exit status и запускает NSIS тем же Bun только после stable SDK build",()=>{
-  for(const [channel,sdkStatus,nsisStatus,count,code]of [["stable",0,0,2,0],["stable",7,0,1,7],["stable",0,9,2,9],["canary",0,0,1,0],["dev",0,0,1,0]]) {
+test("wrapper не теряет exit status и запускает NSIS тем же Bun после SDK build обоих каналов",()=>{
+  for(const [channel,sdkStatus,nsisStatus,count,code]of [["stable",0,0,2,0],["stable",7,0,1,7],["stable",0,9,2,9],["canary",0,0,2,0],["canary",0,9,2,9],["dev",0,0,1,0]]) {
     const calls=[],process={argv:["pinned-bun.exe","electrobun.mjs","build","--env="+channel],execPath:"pinned-bun.exe",platform:"win32",env:{}}
     loadReactModule(new URL("../../scripts/electrobun.mjs",import.meta.url),{"node:child_process":{spawnSync:(...args)=>{calls.push(args);return{status:calls.length===1?sdkStatus:nsisStatus}}}},{process})
     assert.equal(calls.length,count)

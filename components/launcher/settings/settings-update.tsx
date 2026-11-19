@@ -63,10 +63,15 @@ export function SettingsUpdate() {
     setPendingChannel(null)
     setSavingChannel(true)
     try {
-      // Смена канала — установка сборки другого канала, а не смена предпочтения.
+      // Смена канала — установка сборки другого канала, а не смена предпочтения:
+      // SDK отклоняет манифест чужого канала, поэтому main скачивает подписанный
+      // установщик и перезапускает лаунчер уже на новом канале.
       const result = await api.updateSetChannel(next)
-      setChannelNotice(result.state === "opened" ? t("launcherUpdate.channelSwitchOpened") : null)
-      setErrorMsg(null)
+      setChannelNotice(result.state === "switching"
+        ? t("launcherUpdate.channelSwitchStarted", { version: result.version ?? "" })
+        : null)
+      if (result.state === "error" && result.error) showError(result.error)
+      else setErrorMsg(null)
     } catch (error) {
       showError(error)
     } finally { setSavingChannel(false) }

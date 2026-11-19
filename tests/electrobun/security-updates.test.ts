@@ -1,7 +1,10 @@
 // Проверки подсистемы: describe изолируют fixtures и хуки; runtime не подменяется общим состоянием.
 import assert from "node:assert/strict"
-import { generateKeyPairSync, sign } from "node:crypto"
-import { readFile } from "node:fs/promises"
+import { createHash, generateKeyPairSync, sign } from "node:crypto"
+import { createWriteStream } from "node:fs"
+import { mkdir, readFile, rm, stat } from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
 import { describe, test } from "bun:test"
 import { installedPreference, isAllowedUpdateRedirect, manifestUrls, releaseChannelOf } from "../../electrobun/main/verified-update-feed.ts"
 import { verifySignedWindowsUpdateManifest, verifyWindowsUpdateManifest } from "../../electrobun/main/verified-update-manifest.ts"
@@ -97,7 +100,8 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
   function fixture(overrides = {}, cleanup = {}, installed = "1.0.8-pre2") {
     const handlers = new Map()
     const events = []
-    const opened = []
+    const downloads = []
+    const spawned = []
     const local = {
       channel: /-(?:pre|beta)\d+$/.test(installed) ? "canary" : "stable",
       version: installed, hash: "old123",
@@ -130,12 +134,20 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
       "../platform/desktop": {
         app: { emit() {}, getPath: () => "fixture-temp" },
         rpcRegistry: { handle: (name, handler) => handlers.set(name, handler) },
-        shell: { openExternal: async url => opened.push(url) },
       },
       "../platform/operation-gate": { launcherOperations: gate, withinDeadline: (op, ms, message) => withinDeadline(op, cleanup.timeout ?? ms, message) },
       "../platform/shutdown": { launcherShutdown: shutdown },
       "../db/core": { closeDatabaseForUpdate: () => order.push("db-close") },
       "../db": { initDatabase: async () => order.push("db-reopen") },
+      "node:child_process": { spawn: (file, args, options) => {
+        spawned.push({ file, args, options })
+        return { on() {}, unref() {} }
+      } },
+      "./channel-switch": { downloadChannelInstaller: cleanup.installer ?? (async channel => {
+        downloads.push(channel)
+        const version = channel === "canary" ? "1.0.9-pre1" : "1.0.9"
+        return { channel, version, file: `xneon-launcher-${version}-win-x64.exe`, path: `fixture-installer-${channel}.exe` }
+      }) },
       "./update-public-keys": { expectedUpdateBaseUrl: channel => channel === local.channel ? local.baseUrl : "http://wrong" },
       "./verified-update-feed": {
         resolveVerifiedUpdate: async () => ({ manifest, archiveUrl: local.baseUrl + "/" + manifest.artifact.file }),
@@ -152,23 +164,39 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
     return { check: handlers.get("update:check"), install: handlers.get("update:install"),
       getChannel: handlers.get("update:get-channel"),
       download: handlers.get("update:download"), changeChannel: value => handlers.get("update:set-channel")(null, value),
-      cancel: handlers.get("update:cancel-install"), events, opened, info, emit, gate, order, shutdown, beforeQuit }
+      cancel: handlers.get("update:cancel-install"), events, downloads, spawned, info, emit, gate, order, shutdown, beforeQuit }
   }
 
   describe("updater", () => {
-    test("канал задаёт сборка; выбор другой ветки открывает её релизы, а не меняет канал на месте", async () => {
+    test("канал задаёт сборка; другая ветка ставится подписанным установщиком", async () => {
       const app = fixture()
       assert.equal(await app.getChannel(), "beta")
       assert.deepEqual({ ...(await app.changeChannel("beta")) }, { state: "current" })
-      assert.deepEqual({ ...(await app.changeChannel("stable")) }, { state: "opened" })
-      assert.deepEqual(app.opened, ["https://github.com/MAINER4IK/Xneon-Launcher-bun/releases/latest"])
+      assert.deepEqual({ ...(await app.changeChannel("stable")) }, { state: "switching", version: "1.0.9" })
+      assert.deepEqual(app.downloads, ["stable"])
+      assert.equal(app.spawned.length, 1)
+      assert.equal(app.spawned[0].file, "fixture-installer-stable.exe")
+      assert.deepEqual([...app.spawned[0].args], ["/S", "--force-run"])
+      assert.equal(app.spawned[0].options.detached, true)
+      assert.deepEqual(app.order, ["db-close"], "Перед установщиком БД закрывается")
     })
 
-    test("stable-сборка на 'Beta' открывает список релизов (канареечные видны вручную)", async () => {
+    test("stable-сборка на 'Beta' качает canary-установщик, а не открывает сайт", async () => {
       const app = fixture({}, {}, "1.0.8")
       assert.equal(await app.getChannel(), "stable")
-      assert.deepEqual({ ...(await app.changeChannel("beta")) }, { state: "opened" })
-      assert.deepEqual(app.opened, ["https://github.com/MAINER4IK/Xneon-Launcher-bun/releases"])
+      assert.deepEqual({ ...(await app.changeChannel("beta")) }, { state: "switching", version: "1.0.9-pre1" })
+      assert.deepEqual(app.downloads, ["canary"])
+      assert.equal(app.spawned[0].file, "fixture-installer-canary.exe")
+    })
+
+    test("сбой загрузки установщика не блокирует лаунчер и возвращает канал", async () => {
+      const app = fixture({}, { installer: async () => { throw new Error("installer download failed") } })
+      const result = await app.changeChannel("stable")
+      assert.equal(result.state, "error")
+      assert.match(result.error, /installer download failed/)
+      assert.equal(app.gate.blocked, false)
+      assert.equal(app.spawned.length, 0)
+      assert.equal(app.events.at(-1).status, "error")
     })
 
     test("SDK update ждёт общий cleanup файлов до закрытия БД", async () => {
@@ -273,6 +301,118 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
       await app.check()
       assert.equal((await app.download()).success, true)
       assert.equal(app.events.at(-1).status, "downloaded")
+    })
+  })
+}
+
+{
+  const source = await readFile(new URL("../../dist-electrobun-tests/main/channel-switch.js", import.meta.url), "utf8")
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519")
+  const sha256 = bytes => createHash("sha256").update(bytes).digest("hex")
+  const installerName = "xneon-launcher-1.0.9-pre1-win-x64.exe"
+  const installerBytes = Buffer.from("xneon installer fixture")
+
+  function manifestBytes(installer = {}) {
+    return Buffer.from(JSON.stringify({
+      schemaVersion: 1, identifier: appIdentifier, channel: "canary",
+      version: "1.0.9-pre1", hash: "abc12345", platform: "win", arch: "x64",
+      installer: {
+        file: installerName,
+        size: installer.size ?? installerBytes.length,
+        sha256: installer.sha256 ?? sha256(installerBytes),
+      },
+      artifact: {
+        file: "canary-win-x64-XneonLauncher-canary.tar.zst", tarSha256: "a".repeat(64),
+        tarSize: 1000, downloadSize: 500, downloadSha256: "b".repeat(64),
+      },
+    }))
+  }
+
+  async function serve(payload, options = {}) {
+    const files = new Map()
+    const server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        const name = new URL(request.url).pathname.slice(1)
+        const body = files.get(name)
+        return body ? new Response(body) : new Response("missing", { status: 404 })
+      },
+    })
+    const origin = `http://127.0.0.1:${server.port}`
+    const bytes = manifestBytes(options.installer)
+    files.set("canary-win-x64-update-v2.json", bytes)
+    files.set("canary-win-x64-update-v2.json.sig", Buffer.from(JSON.stringify({
+      keyId: "fixture", signature: sign(null, bytes, options.privateKey ?? privateKey).toString("base64"),
+    })))
+    files.set(installerName, payload)
+    return { origin, server }
+  }
+
+  function load(origin) {
+    const dependencies = {
+      "node:assert/strict": assert,
+      "node:crypto": { createHash },
+      "node:fs": { createWriteStream },
+      "node:fs/promises": { mkdir, rm, stat },
+      "node:os": os,
+      "node:path": path,
+      "./update-public-keys": { updatePublicKeys: { fixture: publicKey.export({ type: "spki", format: "pem" }) } },
+      "./verified-update-feed": {
+        manifestUrls: channel => {
+          const name = `${channel}-win-x64-update-v2.json`
+          return { base: origin, manifestUrl: `${origin}/${name}`, signatureUrl: `${origin}/${name}.sig` }
+        },
+        updateFeedGet: async (url, signal, allowMissing) => {
+          const response = await fetch(url, { signal })
+          if (response.status === 404 && allowMissing) { await response.body?.cancel(); return null }
+          return response
+        },
+        updateFeedReadBounded: async (response, maximum) => {
+          const bytes = Buffer.from(await response.arrayBuffer())
+          assert.ok(bytes.length <= maximum, "bounded read exceeded")
+          return bytes
+        },
+      },
+      "./verified-update-manifest": { verifySignedWindowsUpdateManifest },
+    }
+    const module = { exports: {} }
+    vm.runInNewContext(source, { module, require: name => dependencies[name], Buffer, AbortSignal, Error, URL })
+    return module.exports.downloadChannelInstaller
+  }
+
+  describe("channel-switch", () => {
+    test("скачивает установщик целевого канала и сверяет его с подписанным манифестом", async () => {
+      const { origin, server } = await serve(installerBytes)
+      try {
+        const installer = await load(origin)("canary")
+        assert.equal(installer.version, "1.0.9-pre1")
+        assert.equal(installer.file, installerName)
+        assert.deepEqual(await readFile(installer.path), installerBytes)
+        assert.equal(path.basename(installer.path), installerName)
+      } finally {
+        server.stop(true)
+        await rm(path.join(os.tmpdir(), "xneon-channel-installer"), { recursive: true, force: true })
+      }
+    })
+
+    test("подменённый установщик отвергается по хешу из подписи", async () => {
+      const { origin, server } = await serve(Buffer.alloc(installerBytes.length, 0x41), { installer: { size: installerBytes.length } })
+      try {
+        await assert.rejects(load(origin)("canary"), /hash/)
+      } finally {
+        server.stop(true)
+        await rm(path.join(os.tmpdir(), "xneon-channel-installer"), { recursive: true, force: true })
+      }
+    })
+
+    test("несовпадение размера отвергается до запуска установщика", async () => {
+      const { origin, server } = await serve(installerBytes, { installer: { size: installerBytes.length + 10 } })
+      try {
+        await assert.rejects(load(origin)("canary"), /size/)
+      } finally {
+        server.stop(true)
+        await rm(path.join(os.tmpdir(), "xneon-channel-installer"), { recursive: true, force: true })
+      }
     })
   })
 }

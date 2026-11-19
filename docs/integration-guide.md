@@ -18,7 +18,7 @@
 - `test:live`, `share:test:live`, Worker smoke и GUI smoke запускаются отдельно,
   только с выделенными fixtures/профилем. Они не являются обычным CI gate.
 - `bun run build`: prepare → types → renderer → workers → Electrobun; Windows
-  stable сохраняет штатные артефакты Electrobun и добавляет Windows NSIS.
+  stable и canary сохраняют штатные артефакты Electrobun и добавляют Windows NSIS.
   `bun run dev` (также `dev:hmr`) один раз собирает main/workspaces/workers,
   запускает Vite на `http://127.0.0.1:5173/` и загружает его в native-окне.
   Изменения React/CSS применяются через HMR без перезапуска приложения;
@@ -34,8 +34,8 @@
 Три workflow: `.github/workflows/ci.yml` (только проверки на PR/main/dispatch),
 `release.yml` (stable, тег `v1.2.3`) и `pre-release.yml` (canary, тег `v1.2.3-pre1`).
 Каждый релизный пайплайн — `tests → build (matrix) → release` и собирает только свой канал.
-Временно обе релизные матрицы и публикация ограничены Windows x64 (stable: NSIS + SDK + portable;
-canary: SDK + portable). Linux/macOS не блокируют публикацию и не включаются в описание загрузок.
+Временно обе релизные матрицы и публикация ограничены Windows x64 (стабильный и
+canary: NSIS + SDK + portable). Linux/macOS не блокируют публикацию и не включаются в описание загрузок.
 Их упаковка и проверки сохранены; для возврата нужно согласованно расширить обе матрицы
 и список `targets` в `scripts/ci-pipeline.ts`. Проверки `tests` и signing по-прежнему выполняются на Ubuntu.
 На PR и push main запускается один Linux job с quality/offline gates, бюджет — 15 минут.
