@@ -14,8 +14,9 @@ import { xnConnectManager } from "./xn-connect-manager"
 import { isLaunchActive } from "./minecraft-core"
 import { sendToRenderer } from "./runtime"
 import { launcherShutdown } from "../platform/shutdown"
+import { launcherUpdateState } from "./update-state"
 
-/** Канал устанавливает сама сборка: тег версии `-preN`/`-betaN` собирается как canary. */
+/** Фактически установленный канал не меняется до применения скачанной сборки. */
 function installedChannel(): PackageChannel {
   return /-(?:pre|beta)\d+$/.test(packageJson.version) ? "canary" : "stable"
 }
@@ -37,52 +38,34 @@ function updateError(error: unknown) {
 }
 
 export function registerUpdater() {
-  rpcRegistry.handle("update:get-channel", () => installedPreference(installedChannel()))
+  rpcRegistry.handle("update:get-channel", async () => installedPreference(await launcherUpdateState.getChannel(installedChannel())))
+
+  rpcRegistry.handle("update:get-state", async () => {
+    if (isPortable) return { status: "idle" as const, deferred: false }
+    if (downloading) return { status: "downloading" as const, deferred: false }
+    if (installing) return { status: "preparing" as const, deferred: false }
+    const local = await Updater.getLocalInfo()
+    if (local.channel !== "stable" && local.channel !== "canary") return { status: "idle" as const, deferred: false }
+    const pending = await launcherUpdateState.peek({ ...local, channel: local.channel }, await Updater.appDataFolder())
+    downloaded = !!pending
+    return pending ? { status: "downloaded" as const, version: pending.update.manifest.version, deferred: pending.deferred }
+      : { status: "idle" as const, deferred: false }
+  })
 
   rpcRegistry.handle("update:set-channel", async (_event, channel: "stable" | "beta") => {
     if (channel !== "stable" && channel !== "beta") throw new Error("Unknown update channel")
     if (checking || downloading || installing || restartRequested || switching) throw new Error("Update is in progress")
     const target: PackageChannel = channel === "beta" ? "canary" : "stable"
-    if (target === installedChannel()) return { state: "current" as const }
-    // SDK принимает только манифест своего канала, поэтому смена канала — это
-    // установка сборки другого канала через подписанный NSIS-установщик.
     if (isPortable) return { state: "error" as const, error: "Portable builds require manual updates." }
     switching = true
-    let databaseClosed = false
-    let prepared = false
     try {
-      sendToRenderer("update:status", { status: "downloading" })
-      sendToRenderer("update:progress", { percent: 0, transferred: 0, total: 0 })
-      const installer = await downloadChannelInstaller(target, progress => sendToRenderer("update:progress", progress))
-      sendToRenderer("update:status", { status: "preparing" })
-      launcherOperations.blocked = true
-      const cleanup = await launcherShutdown.prepare("update")
-      prepared = true
-      if (cleanup.status !== "completed" || cleanup.failed.length || cleanup.timedOut.length) throw new Error("Update cleanup did not finish successfully.")
-      closeDatabaseForUpdate()
-      databaseClosed = true
-      const child = spawn(installer.path, ["/S", "--force-run"], { detached: true, stdio: "ignore" })
-      child.on("error", error => console.error("[Updater] Channel installer failed to start", error))
-      child.unref()
-      nativeQuitAllowed = true
-      sendToRenderer("update:status", { status: "preparing", version: installer.version })
-      // prepare уже выполнил задачи cleanup; run только отдаёт выход нативному слою.
-      await launcherShutdown.run("update")
-      return { state: "switching" as const, version: installer.version }
+      if (target === await launcherUpdateState.getChannel(installedChannel())) return { state: "current" as const }
+      await launcherUpdateState.selectChannel(target)
+      available = null
+      downloaded = false
+      sendToRenderer("update:status", { status: "idle" })
+      return { state: "selected" as const }
     } catch (error) {
-      nativeQuitAllowed = false
-      if (prepared && launcherShutdown.finished) launcherShutdown.resetAfterCancelledUpdate()
-      if (databaseClosed) {
-        try {
-          await initDatabase()
-        } catch (recoveryError) {
-          const message = `Channel switch failed and the database could not be reopened: ${String(recoveryError)}`
-          sendToRenderer("update:status", { status: "error", error: message })
-          return { state: "error" as const, error: message }
-        }
-      }
-      launcherOperations.blocked = false
-      app.emit("reopen")
       return { state: "error" as const, error: updateError(error) }
     } finally { switching = false }
   })
@@ -93,6 +76,7 @@ export function registerUpdater() {
     rpcRegistry.handle("update:download", () => ({ success: false, error }))
     rpcRegistry.handle("update:install", () => { updateError(error) })
     rpcRegistry.handle("update:cancel-install", () => false)
+    rpcRegistry.handle("update:defer", () => ({ success: false, error }))
     return
   }
 
@@ -112,7 +96,7 @@ export function registerUpdater() {
   })
 
   rpcRegistry.handle("update:check", async () => {
-    if (checking || downloading || installing || restartRequested || isLaunchActive()) {
+    if (checking || downloading || installing || restartRequested || switching || isLaunchActive()) {
       return { available: false, error: "Update check is currently unavailable." }
     }
     checking = true
@@ -125,9 +109,9 @@ export function registerUpdater() {
           local.baseUrl !== expectedUpdateBaseUrl(local.channel)) {
         throw new Error("This package does not support signed Windows updates.")
       }
-      const channel = local.channel as PackageChannel
+      const channel = await launcherUpdateState.getChannel(local.channel)
       sendToRenderer("update:status", { status: "checking" })
-      available = await resolveVerifiedUpdate(local.version, channel)
+      available = await resolveVerifiedUpdate(channel === local.channel ? local.version : "0.0.0", channel)
       if (available?.manifest.hash === local.hash) throw new Error("Update manifest reuses the installed build hash")
       sendToRenderer("update:status", { status: available ? "available" : "not-available", version: available?.manifest.version })
       return { available: !!available, version: available?.manifest.version }
@@ -139,13 +123,24 @@ export function registerUpdater() {
 
   rpcRegistry.handle("update:download", async () => {
     const update = available
-    if (!update || checking || downloading || installing || restartRequested || isLaunchActive()) {
+    if (!update || checking || downloading || installing || restartRequested || switching || isLaunchActive()) {
       return { success: false, error: "Download is currently unavailable." }
     }
     downloading = true
     downloaded = false
     try {
       sendToRenderer("update:status", { status: "downloading" })
+      const local = await Updater.getLocalInfo()
+      if (local.channel !== "stable" && local.channel !== "canary") throw new Error("Unsupported installed channel")
+      if (update.manifest.channel !== local.channel) {
+        sendToRenderer("update:progress", { percent: 0, transferred: 0, total: 0 })
+        const installer = await downloadChannelInstaller(update.manifest.channel,
+          progress => sendToRenderer("update:progress", progress), update.manifest)
+        await launcherUpdateState.stage("installer", { ...local, channel: local.channel }, update, installer.path)
+        downloaded = true
+        sendToRenderer("update:status", { status: "downloaded", version: update.manifest.version })
+        return { success: true }
+      }
       const checked = await Updater.checkForUpdate()
       if (checked.error || !checked.updateAvailable || checked.hash !== update.manifest.hash) {
         throw new Error(checked.error || "SDK rejected the verified update manifest.")
@@ -155,6 +150,7 @@ export function registerUpdater() {
       if (!info.updateReady || info.hash !== update.manifest.hash || info.version !== update.manifest.version) {
         throw new Error(info.error || "SDK did not prepare the verified update.")
       }
+      await launcherUpdateState.stage("sdk", { ...local, channel: local.channel }, update)
       downloaded = true
       sendToRenderer("update:status", { status: "downloaded", version: update.manifest.version })
       return { success: true }
@@ -163,13 +159,23 @@ export function registerUpdater() {
     } finally { downloading = false }
   })
 
+  rpcRegistry.handle("update:defer", async () => {
+    if (!downloaded || checking || downloading || installing || restartRequested || switching) return { success: false, error: "Update is unavailable." }
+    try {
+      const local = await Updater.getLocalInfo()
+      if (local.channel !== "stable" && local.channel !== "canary") throw new Error("Unsupported installed channel")
+      await launcherUpdateState.defer({ ...local, channel: local.channel }, await Updater.appDataFolder())
+      return { success: true }
+    } catch (error) { return { success: false, error: updateError(error) } }
+  })
+
   rpcRegistry.handle("update:install", async () => {
     if (installing || restartRequested) return
     if (isLaunchActive()) {
       updateError("Minecraft is running.")
       return
     }
-    if (!downloaded || downloading || checking) {
+    if (!downloaded || downloading || checking || switching) {
       updateError("Update is unavailable.")
       return
     }
@@ -183,7 +189,10 @@ export function registerUpdater() {
       await launcherOperations.drain(15_000)
       controller.signal.throwIfAborted()
       if (isLaunchActive()) throw new Error("Minecraft is running.")
-      if (!Updater.updateInfo().updateReady) throw new Error("Update is not prepared.")
+      const local = await Updater.getLocalInfo()
+      if (local.channel !== "stable" && local.channel !== "canary") throw new Error("Unsupported installed channel")
+      const pending = await launcherUpdateState.peek({ ...local, channel: local.channel }, await Updater.appDataFolder())
+      if (!pending || (pending.kind === "sdk" && !Updater.updateInfo().updateReady)) throw new Error("Update is not prepared.")
       await withinDeadline(
         Promise.allSettled([stopMcpConnections(true), xnConnectManager.stopAll()]).then(results => {
           for (const result of results) if (result.status === "rejected") throw result.reason
@@ -198,9 +207,17 @@ export function registerUpdater() {
       databaseClosed = true
       cancellation = undefined
       nativeQuitAllowed = true
+      if (pending.kind === "installer") {
+        const child = spawn(pending.path!, ["/S", "--force-run"], { detached: true, stdio: "ignore" })
+        await new Promise<void>((resolve, reject) => { child.once("spawn", resolve); child.once("error", reject) })
+        child.unref()
+        await launcherUpdateState.clearPending()
+        await launcherShutdown.run("update")
+        return
+      }
       await Updater.applyUpdate()
       // SDK может вернуть управление после передачи завершения нативному рантайму.
-      if (restartRequested) return
+      if (restartRequested) { await launcherUpdateState.clearPending(); return }
       const info = Updater.updateInfo()
       downloaded = info.updateReady
       throw new Error(info.error || "Update restart did not start.")

@@ -28,6 +28,7 @@ export type ChannelInstaller = { channel: PackageChannel; version: string; file:
 export async function downloadChannelInstaller(
   channel: PackageChannel,
   onProgress?: (progress: IpcEventMap["update:progress"]) => void,
+  expected?: { version: string; hash: string },
 ): Promise<ChannelInstaller> {
   const signal = AbortSignal.timeout(180_000)
   const { base, manifestUrl, signatureUrl } = manifestUrls(channel)
@@ -39,6 +40,10 @@ export async function downloadChannelInstaller(
   const signature = await updateFeedReadBounded(signatureResponse, MAX_SIGNATURE_BYTES)
   // currentVersion "0.0.0" отключает сравнение версий: переход возможен и назад по номеру.
   const manifest = verifySignedWindowsUpdateManifest(bytes, signature, updatePublicKeys, "0.0.0", channel, channel)
+  if (expected) {
+    assert.equal(manifest.version, expected.version, "Update changed after checking; check for updates again")
+    assert.equal(manifest.hash, expected.hash, "Update changed after checking; check for updates again")
+  }
 
   const document = JSON.parse(bytes.toString("utf8"))
   const installer = document.installer

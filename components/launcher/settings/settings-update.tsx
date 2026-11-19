@@ -3,6 +3,7 @@ import { IconShieldCheck, IconFlask, IconRefresh, IconDownload, IconPlayerPlay, 
 import { ActionConfirmDialog } from "@/components/launcher/instance/action-confirm-dialog"
 import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 
 type UpdateStatus = "idle" | "checking" | "downloading" | "available" | "downloaded" | "preparing" | "error" | "not-available"
 type UpdateChannel = "stable" | "beta"
@@ -17,7 +18,10 @@ export function SettingsUpdate() {
   const [pendingChannel, setPendingChannel] = useState<UpdateChannel | null>(null)
   const [savingChannel, setSavingChannel] = useState(false)
   const [channelNotice, setChannelNotice] = useState<string | null>(null)
-  const busy = savingChannel || status === "checking" || status === "downloading" || status === "preparing"
+  const [restartPrompt, setRestartPrompt] = useState(false)
+  const [deferred, setDeferred] = useState(false)
+  const [deferring, setDeferring] = useState(false)
+  const busy = savingChannel || deferring || status === "checking" || status === "downloading" || status === "preparing"
   const showError = useCallback((error: unknown) => {
     setStatus("error")
     setErrorMsg(error instanceof Error ? error.message : String(error))
@@ -26,17 +30,34 @@ export function SettingsUpdate() {
   useEffect(() => {
     const api = window.electrobunAPI
     if (!api) return
+    let active = true
+    let receivedStatus = false
     // Загружаем текущий канал обновлений.
     void api.updateGetChannel?.().then((ch) => {
-      if (ch) setChannel(ch)
+      if (active && ch) setChannel(ch)
+    }).catch(showError)
+    void api.updateGetState?.().then(state => {
+      if (!active || receivedStatus || !state) return
+      setStatus(state.status)
+      setRemoteVersion(state.version ?? null)
+      setDeferred(state.deferred)
+      setRestartPrompt(state.status === "downloaded" && !state.deferred)
     }).catch(showError)
     const unsubStatus = api.onUpdateStatus((s) => {
-      if (s.status === "available") {
+      receivedStatus = true
+      if (s.status === "idle") {
+        setStatus("idle")
+        setDeferred(false)
+        setRestartPrompt(false)
+        setProgress(null)
+      } else if (s.status === "available") {
         setStatus("available")
         setRemoteVersion(s.version ?? null)
       } else if (s.status === "downloaded") {
         setStatus("downloaded")
         setRemoteVersion(s.version ?? null)
+        setDeferred(false)
+        setRestartPrompt(true)
       } else if (s.status === "downloading") {
         setStatus("downloading")
       } else if (s.status === "preparing") {
@@ -53,7 +74,7 @@ export function SettingsUpdate() {
     const unsubProgress = api.onUpdateProgress((p) => {
       setProgress(p.percent)
     })
-    return () => { unsubStatus(); unsubProgress() }
+    return () => { active = false; unsubStatus(); unsubProgress() }
   }, [showError])
 
   const confirmChannel = async () => {
@@ -63,15 +84,18 @@ export function SettingsUpdate() {
     setPendingChannel(null)
     setSavingChannel(true)
     try {
-      // Смена канала — установка сборки другого канала, а не смена предпочтения:
-      // SDK отклоняет манифест чужого канала, поэтому main скачивает подписанный
-      // установщик и перезапускает лаунчер уже на новом канале.
+      // Меняем только целевую ветку. Проверка, скачивание и перезапуск — отдельно.
       const result = await api.updateSetChannel(next)
-      setChannelNotice(result.state === "switching"
-        ? t("launcherUpdate.channelSwitchStarted", { version: result.version ?? "" })
-        : null)
       if (result.state === "error" && result.error) showError(result.error)
-      else setErrorMsg(null)
+      else {
+        setChannel(next)
+        setStatus("idle")
+        setRemoteVersion(null)
+        setProgress(null)
+        setDeferred(false)
+        setChannelNotice(t("launcherUpdate.channelSelected"))
+        setErrorMsg(null)
+      }
     } catch (error) {
       showError(error)
     } finally { setSavingChannel(false) }
@@ -102,14 +126,27 @@ export function SettingsUpdate() {
   }, [showError])
 
   const handleInstall = useCallback(() => {
+    setRestartPrompt(false)
     void window.electrobunAPI?.updateInstall().catch(showError)
   }, [showError])
+
+  const handleLater = async () => {
+    if (deferring) return
+    setDeferring(true)
+    try {
+      const result = await window.electrobunAPI?.updateDefer()
+      if (!result?.success) throw new Error(result?.error ?? "Could not defer update")
+      setDeferred(true)
+      setRestartPrompt(false)
+    } catch (error) { showError(error) }
+    finally { setDeferring(false) }
+  }
 
   const statusLabel = (() => {
     switch (status) {
       case "checking": return t("launcherUpdate.checking")
       case "available": return t("launcherUpdate.available", { version: remoteVersion })
-      case "downloaded": return t("launcherUpdate.downloaded", { version: remoteVersion })
+      case "downloaded": return t(deferred ? "launcherUpdate.deferred" : "launcherUpdate.downloaded", { version: remoteVersion })
       case "not-available": return t("launcherUpdate.notAvailable")
       case "error": return t("launcherUpdate.error", { message: errorMsg })
       default: return null
@@ -169,6 +206,19 @@ export function SettingsUpdate() {
         icon="info"
       />
 
+      <Dialog open={restartPrompt} onOpenChange={setRestartPrompt}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("launcherUpdate.restartTitle")}</DialogTitle>
+            <DialogDescription>{t("launcherUpdate.restartInfo", { version: remoteVersion })}</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-wrap justify-end gap-3">
+            <button type="button" disabled={busy} onClick={() => { void handleLater() }} className="rounded-xl border border-border px-4 py-2.5 hover:bg-muted disabled:opacity-50">{t("launcherUpdate.later")}</button>
+            <button type="button" disabled={busy} onClick={handleInstall} className="rounded-xl bg-primary px-4 py-2.5 text-primary-foreground hover:bg-primary/90 disabled:opacity-50">{t("launcherUpdate.restartNow")}</button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {channelNotice && (
         <p data-ui="settings-settings-update-p-5" data-settings-tone="green" className="text-xs leading-relaxed text-primary">{channelNotice}</p>
       )}
@@ -206,14 +256,17 @@ export function SettingsUpdate() {
           </button>
         )}
         {status === "downloaded" && (
+          <div className="flex flex-wrap items-center gap-2">
+          {!deferred && <button type="button" onClick={() => { void handleLater() }} disabled={busy} className="rounded-xl border border-border px-4 py-2.5 hover:bg-muted disabled:opacity-50">{t("launcherUpdate.later")}</button>}
           <button data-ui="settings-settings-update-button-4"
             onClick={handleInstall}
             disabled={savingChannel}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors"
           >
             <IconPlayerPlay className="w-4 h-4" strokeWidth={2} />
-            {t("launcherUpdate.restart")}
+            {t("launcherUpdate.restartNow")}
           </button>
+          </div>
         )}
         {status === "preparing" && (
           <button onClick={() => { void window.electrobunAPI?.updateCancelInstall().catch(showError) }}

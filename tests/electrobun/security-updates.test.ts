@@ -123,6 +123,8 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
     }
     const manifest = { version: "1.0.9", channel: local.channel, hash: "next123", artifact: { file: `${local.channel}-win-x64-XneonLauncher.tar.zst` } }
     const info = { updateAvailable: true, updateReady: true, version: manifest.version, hash: manifest.hash, error: "" }
+    let selected = local.channel
+    let pending = null
     let emit
     const order = []
     const gate = new OperationGate()
@@ -153,7 +155,7 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
       "../db": { initDatabase: async () => order.push("db-reopen") },
       "node:child_process": { spawn: (file, args, options) => {
         spawned.push({ file, args, options })
-        return { on() {}, unref() {} }
+        return { on() {}, once(name, callback) { if (name === "spawn") queueMicrotask(callback); return this }, unref() {} }
       } },
       "./channel-switch": { downloadChannelInstaller: cleanup.installer ?? (async (channel, onProgress) => {
         downloads.push(channel)
@@ -162,8 +164,19 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
         return { channel, version, file: `xneon-launcher-${version}-win-x64.exe`, path: `fixture-installer-${channel}.exe` }
       }) },
       "./update-public-keys": { expectedUpdateBaseUrl: channel => channel === local.channel ? local.baseUrl : "http://wrong" },
+      "./update-state": { launcherUpdateState: {
+        getChannel: async () => selected,
+        selectChannel: async channel => { selected = channel; pending = null },
+        stage: async (kind, _local, update, file) => { pending = { kind, update, path: file, deferred: false } },
+        peek: async () => pending,
+        defer: async () => { if (!pending) throw new Error("No downloaded update"); pending.deferred = true },
+        clearPending: async () => { pending = null },
+      } },
       "./verified-update-feed": {
-        resolveVerifiedUpdate: async () => ({ manifest, archiveUrl: local.baseUrl + "/" + manifest.artifact.file }),
+        resolveVerifiedUpdate: async (_version, channel) => ({
+          manifest: channel === local.channel ? manifest : { ...manifest, channel, version: channel === "canary" ? "1.0.9-pre1" : "1.0.9" },
+          archiveUrl: local.baseUrl + "/" + manifest.artifact.file,
+        }),
         installedPreference: channel => channel === "canary" ? "beta" : "stable",
       },
       "./agent-mcp": { stopMcpConnections: cleanup.mcp ?? (async () => order.push("mcp")) },
@@ -177,6 +190,7 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
     return { check: handlers.get("update:check"), install: handlers.get("update:install"),
       getChannel: handlers.get("update:get-channel"),
       download: handlers.get("update:download"), changeChannel: value => handlers.get("update:set-channel")(null, value),
+      defer: handlers.get("update:defer"), state: handlers.get("update:get-state"),
       cancel: handlers.get("update:cancel-install"), events, downloads, spawned, info, emit, gate, order, shutdown, beforeQuit }
   }
 
@@ -202,23 +216,29 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
       assert.equal(app.events.at(-1).status, "downloaded")
     })
 
-    test("канал задаёт сборка; другая ветка ставится подписанным установщиком", async () => {
+    test("другая ветка ставится подписанным установщиком только по отдельному действию", async () => {
       const app = fixture()
       assert.equal(await app.getChannel(), "beta")
       assert.deepEqual({ ...(await app.changeChannel("beta")) }, { state: "current" })
-      assert.deepEqual({ ...(await app.changeChannel("stable")) }, { state: "switching", version: "1.0.9" })
+      assert.deepEqual({ ...(await app.changeChannel("stable")) }, { state: "selected" })
+      await app.check()
+      await app.download()
+      await app.install()
       assert.deepEqual(app.downloads, ["stable"])
       assert.equal(app.spawned.length, 1)
       assert.equal(app.spawned[0].file, "fixture-installer-stable.exe")
       assert.deepEqual([...app.spawned[0].args], ["/S", "--force-run"])
       assert.equal(app.spawned[0].options.detached, true)
-      assert.deepEqual(app.order, ["db-close"], "Перед установщиком БД закрывается")
+      assert.deepEqual(app.order, ["mcp", "relay", "db-close"], "Перед установщиком выполняется cleanup и закрывается БД")
     })
 
     test("stable-сборка на 'Beta' качает canary-установщик, а не открывает сайт", async () => {
       const app = fixture({}, {}, "1.0.8")
       assert.equal(await app.getChannel(), "stable")
-      assert.deepEqual({ ...(await app.changeChannel("beta")) }, { state: "switching", version: "1.0.9-pre1" })
+      assert.deepEqual({ ...(await app.changeChannel("beta")) }, { state: "selected" })
+      await app.check()
+      await app.download()
+      await app.install()
       assert.deepEqual(app.downloads, ["canary"])
       assert.equal(app.spawned[0].file, "fixture-installer-canary.exe")
     })
@@ -226,6 +246,8 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
     test("смена канала передаёт в UI начальный и реальный прогресс установщика", async () => {
       const app = fixture({}, {}, "1.0.8")
       await app.changeChannel("beta")
+      await app.check()
+      await app.download()
       const progress = app.events.filter(event => "percent" in event)
       assert.equal(progress[0]?.percent, 0)
       assert.ok(progress.some(event => event.percent === 25 && event.transferred === 25 && event.total === 100))
@@ -233,12 +255,27 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
 
     test("сбой загрузки установщика не блокирует лаунчер и возвращает канал", async () => {
       const app = fixture({}, { installer: async () => { throw new Error("installer download failed") } })
-      const result = await app.changeChannel("stable")
-      assert.equal(result.state, "error")
+      await app.changeChannel("stable")
+      await app.check()
+      const result = await app.download()
+      assert.equal(result.success, false)
       assert.match(result.error, /installer download failed/)
       assert.equal(app.gate.blocked, false)
       assert.equal(app.spawned.length, 0)
       assert.equal(app.events.at(-1).status, "error")
+    })
+
+    test("Позже сохраняет отложенную установку без shutdown и возвращает состояние при повторном открытии", async () => {
+      const app = fixture({}, {}, "1.0.8")
+      await app.changeChannel("beta")
+      await app.check()
+      await app.download()
+      assert.equal((await app.state()).deferred, false)
+      assert.equal((await app.defer()).success, true)
+      assert.equal((await app.state()).deferred, true)
+      assert.equal(app.spawned.length, 0)
+      assert.equal(app.order.length, 0)
+      assert.equal(app.gate.blocked, false)
     })
 
     test("SDK update ждёт общий cleanup файлов до закрытия БД", async () => {

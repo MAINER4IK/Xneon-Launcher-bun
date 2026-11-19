@@ -4,7 +4,7 @@ import { copyFile, lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs
 import path from "node:path"
 import { getDefaultLauncherDataRoot } from "./profile-path"
 import { updatePublicKeys } from "./update-public-keys"
-import { verifySignedWindowsUpdateManifest } from "./verified-update-manifest"
+import { compareReleaseVersions, verifySignedWindowsUpdateManifest } from "./verified-update-manifest"
 import type { PackageChannel, VerifiedUpdate } from "./verified-update-feed"
 
 export type InstalledUpdateIdentity = { channel: PackageChannel; version: string; hash: string }
@@ -97,11 +97,15 @@ export class UpdateStateStore {
   }
 
   async peek(local: InstalledUpdateIdentity, sdkRoot?: string): Promise<PendingUpdate | null> {
-    const saved = (await this.read()).pending
+    const state = await this.read()
+    const saved = state.pending
     if (!saved) return null
     const update = this.verify(saved)
+    assert.equal(state.channel, saved.channel, "Pending update differs from selected channel")
     if (local.channel === update.manifest.channel && local.hash === update.manifest.hash) { await this.clearPending(); return null }
     assert.ok(saved.fromHash === local.hash && saved.fromChannel === local.channel, "Pending update belongs to a different installed build")
+    if (saved.channel === local.channel) assert.ok(compareReleaseVersions(update.manifest.version, local.version) > 0, "Pending update must be newer than the installed version")
+    if (saved.kind === "sdk") assert.equal(saved.channel, local.channel, "SDK cannot change the installed channel")
     let file: string | undefined
     if (saved.kind === "installer") file = await this.verifyInstaller(update)
     else if (sdkRoot) {
