@@ -255,3 +255,20 @@ jobs:
           fail_on_unmatched_files: true
           body_path: ${{ runner.temp }}/release-notes.md
           files: verified/*
+      - name: Publish the rolling canary release (flat channel assets)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Canary-канал читает плоские URL releases/download/canary/<file> (без API и
+          # фиксированного порта). Rolling-релиз с фиксированным тегом canary пересоздаётся
+          # на каждом канареечном релизе; prerelease и --latest=false убирают его из «Latest».
+          gh release delete canary --yes --cleanup-tag 2>/dev/null || true
+          gh release create canary \
+            --title "Canary (Xneon Launcher)" \
+            --prerelease \
+            --latest=false \
+            verified/canary-win-x64-update.json \
+            verified/canary-win-x64-update-v2.json \
+            verified/canary-win-x64-update-v2.json.sig \
+            verified/canary-win-x64-XneonLauncher.tar.zst

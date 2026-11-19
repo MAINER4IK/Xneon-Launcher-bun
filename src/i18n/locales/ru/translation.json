@@ -1230,6 +1230,8 @@
   "launcherUpdate.channelDescBeta": "Beta — ранний доступ к новым функциям",
   "launcherUpdate.channelStable": "Stable",
   "launcherUpdate.channelBeta": "Beta",
+  "launcherUpdate.channelSwitchInfo": "Переключение между Stable и Beta выполняется установкой другой сборки. Мы откроем страницу релизов нужного канала — скачайте и установите её вручную. Ваши данные сохранятся.",
+  "launcherUpdate.channelSwitchOpened": "Мы открыли страницу релизов нужного канала. Установите сборку и перезапустите лаунчер.",
   "updates.title": "Обновления",
   "updates.checkTitle": "Проверить обновления",
   "updates.checking": "Проверяю обновления...",

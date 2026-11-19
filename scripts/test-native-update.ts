@@ -2,9 +2,6 @@ import assert from "node:assert/strict"
 import { mock } from "bun:test"
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"
-import { createHash, generateKeyPairSync, sign } from "node:crypto"
-import { serveVerifiedUpdate, stageVerifiedArchive } from "../electrobun/main/verified-update-feed"
-import { verifyWindowsUpdateManifest } from "../electrobun/main/verified-update-manifest"
 import { appIdentifier } from "../electrobun/main/app-identity"
 import { nativeTarExecutable } from "./native-tar"
 
@@ -40,6 +37,9 @@ if (!childRoot) {
   process.exit(child.exitCode)
 }
 
+// Локальный сервер заменяет GitHub Releases на время проверки: SDK принимает только
+// https или loopback http, поэтому 127.0.0.1 подходит. Канал задаёт само содержимое
+// version.json — bridge с проекцией канала больше не нужен.
 let wrongDigest = true
 const server = Bun.serve({
   hostname: "127.0.0.1",
@@ -47,8 +47,9 @@ const server = Bun.serve({
   fetch(request) {
     const name = new URL(request.url).pathname.slice(1)
     if (name === prefix + "-update-v2.json") {
-      const artifact = wrongDigest ? { ...manifest.artifact, tarSha256: "0".repeat(64) } : manifest.artifact
-      return Response.json({ ...manifest, artifact })
+      return Response.json(wrongDigest
+        ? { ...manifest, artifact: { ...manifest.artifact, tarSha256: "0".repeat(64) } }
+        : manifest)
     }
     if (name === manifest.artifact.file) return new Response(Bun.file(archive))
     return new Response("Not found", { status: 404 })
@@ -59,6 +60,7 @@ try {
   const metadata = path.join(app, "Resources", "version.json")
   const local = JSON.parse(readFileSync(metadata, "utf8"))
   assert.equal(local.hash, manifest.hash)
+  // Локальная версия старее выпущенной: манифест обязан пройти по каналу и быть новее.
   const source = { ...local, version: "1.0.7", hash: "0000000000001", baseUrl: server.url.href }
   writeFileSync(metadata, JSON.stringify(source))
   // Изолируем интерфейс завершения процесса. Проверка и нативная подготовка
@@ -71,31 +73,16 @@ try {
   process.chdir(bin)
   const { Updater } = await import("../.hutch/devkit/api/sdks/main/core/Updater.ts")
   Updater.onStatusChange(({ status, message }) => console.log(channel, status, message))
+  // Сначала подпорченный digest: нативный helper обязан отклонить архив.
   assert.equal((await Updater.checkForUpdate()).updateAvailable, true)
   await Updater.downloadUpdate()
   assert.equal(Updater.updateInfo().updateReady, false)
   assert.match(Updater.updateInfo().error, /ArchiveHashMismatch/)
+  // Корректный манифест: тот же канал, подготовка до состояния ready.
   wrongDigest = false
-  const archiveBytes = readFileSync(archive)
-  const payload = Buffer.from(JSON.stringify({ ...manifest, artifact: {
-    ...manifest.artifact,
-    downloadSha256: createHash("sha256").update(archiveBytes).digest("hex"),
-    downloadSize: archiveBytes.length,
-  } }))
-  const { privateKey, publicKey } = generateKeyPairSync("ed25519")
-  const checked = verifyWindowsUpdateManifest(payload, sign(null, payload, privateKey), publicKey, source.version, channel, "canary")
-  const update = { manifest: checked, archiveUrl: new URL(manifest.artifact.file, server.url).href }
-  const staged = await stageVerifiedArchive(update, root, AbortSignal.timeout(60_000), () => {})
-  server.stop(true)
-  const bridge = serveVerifiedUpdate(update, staged.file, source.baseUrl)
-  try {
-    assert.equal((await Updater.checkForUpdate()).updateAvailable, true)
-    await Updater.downloadUpdate()
-    assert.equal(Updater.updateInfo().updateReady, true, Updater.updateInfo().error)
-  } finally {
-    bridge.stop()
-    await staged.dispose()
-  }
+  assert.equal((await Updater.checkForUpdate()).updateAvailable, true)
+  await Updater.downloadUpdate()
+  assert.equal(Updater.updateInfo().updateReady, true, Updater.updateInfo().error)
   assert.deepEqual(JSON.parse(readFileSync(metadata, "utf8")), source)
   console.log("Native update prepared without replacing the source installation:", root)
 } finally {

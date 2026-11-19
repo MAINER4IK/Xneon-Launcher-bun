@@ -1288,6 +1288,8 @@
   "launcherUpdate.channelDescBeta": "Beta — früher Zugang zu neuen Funktionen",
   "launcherUpdate.channelStable": "Stable",
   "launcherUpdate.channelBeta": "Beta",
+  "launcherUpdate.channelSwitchInfo": "Der Wechsel zwischen Stable und Beta erfordert die Installation des anderen Builds. Wir öffnen die Release-Seite des gewünschten Kanals — laden Sie den Build herunter und installieren Sie ihn manuell. Ihre Daten bleiben erhalten.",
+  "launcherUpdate.channelSwitchOpened": "Wir haben die Release-Seite des gewünschten Kanals geöffnet. Installieren Sie den Build und starten Sie den Launcher neu.",
   "updates.title": "Updates",
   "updates.checkTitle": "Nach Updates suchen",
   "updates.checking": "Suche nach Updates...",

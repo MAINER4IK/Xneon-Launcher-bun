@@ -1,38 +1,31 @@
 import packageJson from "../../package.json"
 import Electrobun, { Updater } from "electrobun/main"
-import { app, rpcRegistry } from "../platform/desktop"
+import { app, rpcRegistry, shell } from "../platform/desktop"
 import { launcherOperations, withinDeadline } from "../platform/operation-gate"
 import { closeDatabaseForUpdate } from "../db/core"
-import { dbHelpers, initDatabase } from "../db"
-import { lstat, readFile, unlink } from "node:fs/promises"
-import path from "node:path"
+import { initDatabase } from "../db"
 import { isPortable } from "./profile-path"
-import { verifiedUpdateBridgeUrl } from "./update-public-keys"
-import { bridgeUpdateArtifact, discoverVerifiedUpdate, stageVerifiedArchive, serveVerifiedUpdate, type VerifiedUpdate } from "./verified-update-feed"
+import { expectedUpdateBaseUrl } from "./update-public-keys"
+import { installedPreference, resolveVerifiedUpdate, type PackageChannel, type VerifiedUpdate } from "./verified-update-feed"
 import { stopMcpConnections } from "./agent-mcp"
 import { xnConnectManager } from "./xn-connect-manager"
 import { isLaunchActive } from "./minecraft-core"
 import { sendToRenderer } from "./runtime"
 import { launcherShutdown } from "../platform/shutdown"
-import { resolveUpdatePreference } from "./update-preference"
 
-type UpdateChannel = "stable" | "beta"
+/** Канал устанавливает сама сборка: тег версии `-preN`/`-betaN` собирается как canary. */
+function installedChannel(): PackageChannel {
+  return /-(?:pre|beta)\d+$/.test(packageJson.version) ? "canary" : "stable"
+}
+
 let available: VerifiedUpdate | null = null
-let preparedRecord: { file: string; bytes: Buffer } | undefined
 let checking = false
-let changingChannel = false
 let downloaded = false
 let downloading = false
 let installing = false
 let restartRequested = false
 let nativeQuitAllowed = false
 let cancellation: AbortController | undefined
-
-async function readPreparedRecord(file: string): Promise<Buffer> {
-  const metadata = await lstat(file)
-  if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.size > 64 * 1024) throw new Error("Invalid prepared update record")
-  return readFile(file)
-}
 
 function updateError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error)
@@ -41,34 +34,27 @@ function updateError(error: unknown) {
 }
 
 export function registerUpdater() {
-  const readChannel = async (): Promise<UpdateChannel> => {
-    const saved = await dbHelpers.getSetting("launcherUpdateChannel")
-    const savedVersion = await dbHelpers.getSetting("launcherUpdateChannelVersion")
-    const channel = resolveUpdatePreference(packageJson.version, savedVersion, saved)
-    if (savedVersion !== packageJson.version || saved !== channel) {
-      await dbHelpers.setSetting("launcherUpdateChannel", channel)
-      await dbHelpers.setSetting("launcherUpdateChannelVersion", packageJson.version)
-    }
-    return channel
-  }
-  rpcRegistry.handle("update:get-channel", readChannel)
-  rpcRegistry.handle("update:set-channel", async (_event, channel: UpdateChannel) => {
+  rpcRegistry.handle("update:get-channel", () => installedPreference(installedChannel()))
+
+  rpcRegistry.handle("update:set-channel", async (_event, channel: "stable" | "beta") => {
     if (channel !== "stable" && channel !== "beta") throw new Error("Unknown update channel")
-    if (checking || changingChannel || downloading || installing || restartRequested) throw new Error("Update is in progress")
-    changingChannel = true
+    if (checking || downloading || installing || restartRequested) throw new Error("Update is in progress")
     try {
-      await dbHelpers.setSetting("launcherUpdateChannel", channel)
-      await dbHelpers.setSetting("launcherUpdateChannelVersion", packageJson.version)
-      available = null
-      downloaded = false
-      preparedRecord = undefined
-    } finally { changingChannel = false }
+      // SDK не позволяет сменить канал на месте: manifest.channel обязан совпадать с
+      // version.json.channel. Смена канала — установка сборки другого канала; пока открываем
+      // страницу релизов целевого канала (установка in-app — отдельная задача).
+      if (channel === installedPreference(installedChannel())) return { state: "current" as const }
+      await shell.openExternal(channel === "beta"
+        ? "https://github.com/MAINER4IK/Xneon-Launcher-bun/releases"
+        : "https://github.com/MAINER4IK/Xneon-Launcher-bun/releases/latest")
+      return { state: "opened" as const }
+    } catch (error) {
+      return { state: "error" as const, error: updateError(error) }
+    }
   })
 
-  if (isPortable || packageJson.version === "1.0.8-pre1") {
-    const error = isPortable
-      ? "Portable builds require manual updates."
-      : "In-app updates are disabled in this experimental pre-release. Install builds manually."
+  if (isPortable) {
+    const error = "Portable builds require manual updates."
     rpcRegistry.handle("update:check", () => ({ available: false, error }))
     rpcRegistry.handle("update:download", () => ({ success: false, error }))
     rpcRegistry.handle("update:install", () => { updateError(error) })
@@ -79,27 +65,35 @@ export function registerUpdater() {
   Electrobun.events.on("before-quit", event => {
     if (launcherOperations.blocked && !nativeQuitAllowed && !launcherShutdown.exiting) event.response = { allow: false }
   })
-  Updater.onStatusChange(({ status }) => {
-    if (installing && status === "launching-new-version") restartRequested = true
-    if (installing && status === "error") restartRequested = false
+  Updater.onStatusChange(({ status, details }) => {
+    if (status === "launching-new-version" && installing) restartRequested = true
+    if (status === "error" && installing) restartRequested = false
+    if (downloading || installing) {
+      if (status === "download-progress" && details?.progress != null) {
+        sendToRenderer("update:progress", { percent: details.progress, transferred: details.bytesDownloaded ?? 0, total: details.totalBytes ?? 0 })
+      } else if (["downloading", "downloading-full-bundle", "fetching-patch", "downloading-patch", "extracting", "decompressing", "applying"].includes(status)) {
+        sendToRenderer("update:status", { status: "downloading" })
+      }
+    }
   })
+
   rpcRegistry.handle("update:check", async () => {
-    if (checking || changingChannel || downloading || installing || restartRequested || isLaunchActive()) {
+    if (checking || downloading || installing || restartRequested || isLaunchActive()) {
       return { available: false, error: "Update check is currently unavailable." }
     }
     checking = true
     available = null
     downloaded = false
-    preparedRecord = undefined
     try {
       const local = await Updater.getLocalInfo()
       if (process.platform !== "win32" || process.arch !== "x64" ||
-          (local.channel !== "stable" && local.channel !== "canary") || local.version !== packageJson.version || local.baseUrl !== verifiedUpdateBridgeUrl) {
+          (local.channel !== "stable" && local.channel !== "canary") || local.version !== packageJson.version ||
+          local.baseUrl !== expectedUpdateBaseUrl(local.channel)) {
         throw new Error("This package does not support signed Windows updates.")
       }
-      const preference = await readChannel()
+      const channel = local.channel as PackageChannel
       sendToRenderer("update:status", { status: "checking" })
-      available = await discoverVerifiedUpdate(local.version, local.channel, preference)
+      available = await resolveVerifiedUpdate(local.version, channel)
       if (available?.manifest.hash === local.hash) throw new Error("Update manifest reuses the installed build hash")
       sendToRenderer("update:status", { status: available ? "available" : "not-available", version: available?.manifest.version })
       return { available: !!available, version: available?.manifest.version }
@@ -108,72 +102,43 @@ export function registerUpdater() {
       return { available: false, error: updateError(error) }
     } finally { checking = false }
   })
+
   rpcRegistry.handle("update:download", async () => {
     const update = available
-    if (!update || checking || changingChannel || downloading || installing || restartRequested || isLaunchActive()) {
+    if (!update || checking || downloading || installing || restartRequested || isLaunchActive()) {
       return { success: false, error: "Download is currently unavailable." }
     }
     downloading = true
     downloaded = false
-    preparedRecord = undefined
     try {
       sendToRenderer("update:status", { status: "downloading" })
-      const staged = await stageVerifiedArchive(update, app.getPath("temp"), AbortSignal.timeout(15 * 60_000), (bytes, total) =>
-        sendToRenderer("update:progress", { percent: bytes * 100 / total, transferred: bytes, total }))
-      try {
-        const local = await Updater.getLocalInfo()
-        const directory = path.join(await Updater.appDataFolder(), "self-extraction")
-        const dirStat = await lstat(directory).catch((error: NodeJS.ErrnoException) => {
-          if (error.code !== "ENOENT") throw error
-          return null
-        })
-        if (dirStat && (!dirStat.isDirectory() || dirStat.isSymbolicLink())) throw new Error("Invalid update staging directory")
-        const file = path.join(directory, ".electrobun-prepared-update.json")
-        // SDK matches cached records by version/hash/filename, without the signed digest.
-        await unlink(file).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") throw error })
-        if (local.baseUrl !== verifiedUpdateBridgeUrl) throw new Error("Invalid native update feed identity.")
-        const bridgeArtifact = bridgeUpdateArtifact(update)
-        const bridge = serveVerifiedUpdate(update, staged.file, local.baseUrl)
-        try {
-          const checked = await Updater.checkForUpdate()
-          if (checked.error || !checked.updateAvailable || checked.hash !== update.manifest.hash) {
-            throw new Error(checked.error || "SDK rejected the verified update manifest.")
-          }
-          await Updater.downloadUpdate()
-          const info = Updater.updateInfo()
-          if (!info.updateReady || info.hash !== update.manifest.hash || info.version !== update.manifest.version) {
-            throw new Error(info.error || "SDK did not prepare the verified update.")
-          }
-          const bytes = await readPreparedRecord(file)
-          const record = JSON.parse(bytes.toString("utf8"))
-          if (record.schema_version !== 2 || record.hash !== update.manifest.hash ||
-              record.version !== update.manifest.version || record.artifact_file !== bridgeArtifact.file) {
-            throw new Error("Prepared update does not match the signed manifest.")
-          }
-          preparedRecord = { file, bytes }
-        } finally {
-          bridge.stop()
-        }
-      } finally { await staged.dispose() }
+      const checked = await Updater.checkForUpdate()
+      if (checked.error || !checked.updateAvailable || checked.hash !== update.manifest.hash) {
+        throw new Error(checked.error || "SDK rejected the verified update manifest.")
+      }
+      await Updater.downloadUpdate()
+      const info = Updater.updateInfo()
+      if (!info.updateReady || info.hash !== update.manifest.hash || info.version !== update.manifest.version) {
+        throw new Error(info.error || "SDK did not prepare the verified update.")
+      }
       downloaded = true
       sendToRenderer("update:status", { status: "downloaded", version: update.manifest.version })
       return { success: true }
     } catch (error) {
-      preparedRecord = undefined
       return { success: false, error: updateError(error) }
     } finally { downloading = false }
   })
+
   rpcRegistry.handle("update:install", async () => {
     if (installing || restartRequested) return
     if (isLaunchActive()) {
       updateError("Minecraft is running.")
       return
     }
-    if (!downloaded || !preparedRecord || downloading || changingChannel || checking) {
+    if (!downloaded || downloading || checking) {
       updateError("Update is unavailable.")
       return
     }
-    const prepared = preparedRecord
     installing = true
     launcherOperations.blocked = true
     const controller = new AbortController()
@@ -184,6 +149,7 @@ export function registerUpdater() {
       await launcherOperations.drain(15_000)
       controller.signal.throwIfAborted()
       if (isLaunchActive()) throw new Error("Minecraft is running.")
+      if (!Updater.updateInfo().updateReady) throw new Error("Update is not prepared.")
       await withinDeadline(
         Promise.allSettled([stopMcpConnections(true), xnConnectManager.stopAll()]).then(results => {
           for (const result of results) if (result.status === "rejected") throw result.reason
@@ -194,14 +160,12 @@ export function registerUpdater() {
       const cleanup = await launcherShutdown.prepare("update")
       if (cleanup.status !== "completed" || cleanup.failed.length || cleanup.timedOut.length) throw new Error("Update cleanup did not finish successfully.")
       controller.signal.throwIfAborted()
-      if (!(await readPreparedRecord(prepared.file)).equals(prepared.bytes)) throw new Error("Prepared update changed after verification.")
-      controller.signal.throwIfAborted()
       closeDatabaseForUpdate()
       databaseClosed = true
       cancellation = undefined
       nativeQuitAllowed = true
       await Updater.applyUpdate()
-      // SDK РјРѕР¶РµС‚ РІРµСЂРЅСѓС‚СЊ СѓРїСЂР°РІР»РµРЅРёРµ РїРѕСЃР»Рµ РїРµСЂРµРґР°С‡Рё Р·Р°РІРµСЂС€РµРЅРёСЏ РЅР°С‚РёРІРЅРѕРјСѓ СЂР°РЅС‚Р°Р№РјСѓ.
+      // SDK может вернуть управление после передачи завершения нативному рантайму.
       if (restartRequested) return
       const info = Updater.updateInfo()
       downloaded = info.updateReady
@@ -226,6 +190,7 @@ export function registerUpdater() {
       installing = false
     }
   })
+
   rpcRegistry.handle("update:cancel-install", () => {
     if (!cancellation) return false
     cancellation.abort(new Error("Update restart was cancelled."))
