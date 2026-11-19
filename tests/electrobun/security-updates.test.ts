@@ -1,78 +1,35 @@
 // Проверки подсистемы: describe изолируют fixtures и хуки; runtime не подменяется общим состоянием.
 import assert from "node:assert/strict"
-import { createHash, generateKeyPairSync, sign } from "node:crypto"
-import { mkdir, mkdtemp, readdir, rm, readFile } from "node:fs/promises"
-import path from "node:path"
+import { generateKeyPairSync, sign } from "node:crypto"
+import { readFile } from "node:fs/promises"
 import { describe, test } from "bun:test"
-import { bridgeUpdateArtifact, releaseChannelOf, selectUpdateTag, serveVerifiedUpdate, stageVerifiedArchive } from "../../electrobun/main/verified-update-feed.ts"
+import { installedPreference, manifestUrls, releaseChannelOf } from "../../electrobun/main/verified-update-feed.ts"
 import { verifySignedWindowsUpdateManifest, verifyWindowsUpdateManifest } from "../../electrobun/main/verified-update-manifest.ts"
 import { appIdentifier } from "../../electrobun/main/app-identity.ts"
 import nodeTest from "node:test"
 import vm from "node:vm"
 import { OperationGate, withinDeadline } from "../../electrobun/platform/operation-gate.ts"
 import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
-import { resolveUpdatePreference } from "../../electrobun/main/update-preference.ts"
 
 {
   describe("verified-update-feed", () => {
-    test("Stable ignores pre-releases and Beta selects the highest newer version", () => {
-      const releases = ["v1.0.8-pre3", "v1.0.8", "v1.0.9-pre1", "v1.0.7"].map(tag_name => ({ tag_name, draft: false, prerelease: tag_name.includes("-pre") }))
-      assert.equal(selectUpdateTag(releases, "1.0.8-pre2", "stable"), "1.0.8")
-      assert.equal(selectUpdateTag(releases, "1.0.8", "beta"), "1.0.9-pre1")
-      assert.equal(selectUpdateTag(releases, "1.0.9-pre1", "stable"), null)
-      assert.equal(selectUpdateTag([{ ...releases[2], draft: true }], "1.0.8", "beta"), null)
-    })
-
-    test("канал обновления задаёт сам релиз, явный выбор разрешает переход", () => {
+    test("канал по версии и его отображение в UI", () => {
       assert.equal(releaseChannelOf("1.0.8"), "stable")
       assert.equal(releaseChannelOf("1.0.8-pre2"), "canary")
-      // Подпись проверяется по каналу релиза, а SDK получает эквивалент канала установки.
-      const update = {
-        installedChannel: "stable",
-        manifest: { channel: "canary", hash: "h1", artifact: { file: "canary-win-x64-XneonLauncher-canary.tar.zst" } },
-      }
-      const bridge = bridgeUpdateArtifact(update)
-      assert.equal(bridge.file, "stable-win-x64-XneonLauncher-canary.tar.zst")
-      assert.equal(bridge.manifest.channel, "stable")
-      assert.equal(bridge.manifest.hash, "h1")
-      assert.equal(bridge.manifest.artifact.file, bridge.file)
-      assert.equal(bridgeUpdateArtifact({ manifest: update.manifest }).manifest.channel, "canary")
+      assert.equal(releaseChannelOf("1.0.8-beta1"), "canary")
+      assert.equal(installedPreference("stable"), "stable")
+      assert.equal(installedPreference("canary"), "beta")
     })
 
-    test("stage checks signed compressed bytes and the bridge serves only that file", async () => {
-      const bytes = Buffer.from("fixture")
-      const root = path.resolve(".tmp")
-      await mkdir(root, { recursive: true })
-      const temp = await mkdtemp(path.join(root, "verified-feed-"))
-      const server = Bun.serve({
-        hostname: "127.0.0.1", port: 0,
-        fetch(request) {
-          if (new URL(request.url).pathname === "/redirect") return Response.redirect("https://example.invalid/")
-          return new Response(bytes)
-        },
-      })
-      const artifact = {
-        file: "stable-win-x64-XneonLauncher.tar.zst",
-        downloadSize: bytes.length,
-        downloadSha256: createHash("sha256").update(bytes).digest("hex"),
-      }
-      const update = { manifest: { channel: "stable", artifact }, archiveUrl: server.url.href }
-      const signal = AbortSignal.timeout(5000)
-      try {
-        await assert.rejects(stageVerifiedArchive({ ...update, archiveUrl: new URL("redirect", server.url).href }, temp, signal, () => {}), /outside GitHub/)
-        await assert.rejects(stageVerifiedArchive({ ...update, manifest: { channel: "stable", artifact: { ...artifact, downloadSha256: "0".repeat(64) } } }, temp, signal, () => {}), /signed metadata/)
-        await assert.rejects(stageVerifiedArchive({ ...update, manifest: { channel: "stable", artifact: { ...artifact, downloadSize: 1 } } }, temp, signal, () => {}), /signed size/)
-        await assert.rejects(stageVerifiedArchive(update, temp, AbortSignal.abort(), () => {}))
-        assert.deepEqual(await readdir(temp), [])
-        const staged = await stageVerifiedArchive(update, temp, signal, () => {})
-        const bridge = serveVerifiedUpdate(update, staged.file)
-        try {
-          const response = await fetch(bridge.baseUrl + artifact.file)
-          assert.deepEqual(Buffer.from(await response.arrayBuffer()), bytes)
-          assert.equal((await fetch(bridge.baseUrl + "stable-win-x64-update.json")).status, 404)
-          assert.equal((await fetch(new URL(artifact.file, new URL(bridge.baseUrl).origin))).status, 404)
-        } finally { bridge.stop(); await staged.dispose() }
-      } finally { server.stop(true); await rm(temp, { recursive: true, force: true }) }
+    test("манифест канала читается из плоского URL-каталога GitHub без API и фиксированного порта", () => {
+      const stable = manifestUrls("stable")
+      assert.equal(stable.base, "https://github.com/MAINER4IK/Xneon-Launcher-bun/releases/latest/download")
+      assert.equal(stable.manifestUrl, stable.base + "/stable-win-x64-update-v2.json")
+      assert.equal(stable.signatureUrl, stable.base + "/stable-win-x64-update-v2.json.sig")
+      const canary = manifestUrls("canary")
+      assert.equal(canary.base, "https://github.com/MAINER4IK/Xneon-Launcher-bun/releases/download/canary")
+      assert.equal(canary.manifestUrl, canary.base + "/canary-win-x64-update-v2.json")
+      assert.equal(canary.signatureUrl, canary.base + "/canary-win-x64-update-v2.json.sig")
     })
   })
 }
@@ -127,17 +84,19 @@ import { resolveUpdatePreference } from "../../electrobun/main/update-preference
   const test = nodeTest
   const source = await readFile(new URL("../../dist-electrobun-tests/main/updater.js", import.meta.url), "utf8")
 
-  function fixture(overrides = {}, cleanup = {}) {
+  function fixture(overrides = {}, cleanup = {}, installed = "1.0.8-pre2") {
     const handlers = new Map()
     const events = []
-    // Релиз подписан своим каналом (canary), а установка — stable: bridge проецирует имя артефакта.
-    const manifest = { version: "1.0.9", channel: "canary", hash: "next123", artifact: { file: "canary-win-x64-XneonLauncher.tar.zst" } }
+    const opened = []
+    const local = {
+      channel: /-(?:pre|beta)\d+$/.test(installed) ? "canary" : "stable",
+      version: installed, hash: "old123",
+      baseUrl: /-(?:pre|beta)\d+$/.test(installed)
+        ? "https://github.com/MAINER4IK/Xneon-Launcher-bun/releases/download/canary"
+        : "https://github.com/MAINER4IK/Xneon-Launcher-bun/releases/latest/download",
+    }
+    const manifest = { version: "1.0.9", channel: local.channel, hash: "next123", artifact: { file: `${local.channel}-win-x64-XneonLauncher.tar.zst` } }
     const info = { updateAvailable: true, updateReady: true, version: manifest.version, hash: manifest.hash, error: "" }
-    const local = { channel: "stable", version: "1.0.8-pre2", hash: "old123", baseUrl: "http://127.0.0.1:53749/xneon-verified-update/" }
-    const settings = new Map()
-    // SDK хранит в записи тот манифест, который отдал bridge, то есть уже спроецированное имя.
-    const preparedArtifact = bridgeUpdateArtifact({ manifest, installedChannel: local.channel }).file
-    let prepared = Buffer.from(JSON.stringify({ schema_version: 2, hash: manifest.hash, version: manifest.version, artifact_file: preparedArtifact }))
     let emit
     const order = []
     const gate = new OperationGate()
@@ -156,31 +115,21 @@ import { resolveUpdatePreference } from "../../electrobun/main/update-preference
     }
     const dependencies = {
       "electrobun/main": { Updater, default: { events: { on(name, callback) { if (name === "before-quit") beforeQuit = callback } } }, __esModule: true },
-      "../../package.json": { version: "1.0.8-pre2" },
+      "../../package.json": { version: installed },
       "./profile-path": { isPortable: false },
-      "../platform/desktop": { app: { emit() {}, getPath: () => "fixture-temp" }, rpcRegistry: { handle: (name, handler) => handlers.set(name, handler) } },
+      "../platform/desktop": {
+        app: { emit() {}, getPath: () => "fixture-temp" },
+        rpcRegistry: { handle: (name, handler) => handlers.set(name, handler) },
+        shell: { openExternal: async url => opened.push(url) },
+      },
       "../platform/operation-gate": { launcherOperations: gate, withinDeadline: (op, ms, message) => withinDeadline(op, cleanup.timeout ?? ms, message) },
       "../platform/shutdown": { launcherShutdown: shutdown },
       "../db/core": { closeDatabaseForUpdate: () => order.push("db-close") },
-      "../db": { initDatabase: async () => order.push("db-reopen"), dbHelpers: {
-        getSetting: async key => settings.get(key), setSetting: async (key, value) => { settings.set(key, value) },
-      } },
-      "./update-preference": { resolveUpdatePreference },
-      "node:path": { join: (...parts) => parts.join("/") },
-      "node:fs/promises": {
-        lstat: async file => ({ isFile: () => file.endsWith(".json"), isDirectory: () => !file.endsWith(".json"), isSymbolicLink: () => false, size: prepared.length }),
-        unlink: async () => {},
-        readFile: async () => prepared,
-      },
-      "./update-public-keys": { verifiedUpdateBridgeUrl: local.baseUrl },
+      "../db": { initDatabase: async () => order.push("db-reopen") },
+      "./update-public-keys": { expectedUpdateBaseUrl: channel => channel === local.channel ? local.baseUrl : "http://wrong" },
       "./verified-update-feed": {
-        bridgeUpdateArtifact,
-        discoverVerifiedUpdate: async () => ({ manifest, installedChannel: local.channel }),
-        stageVerifiedArchive: async (_update, _temp, _signal, report) => {
-          report(50, 200)
-          return { file: "fixture-archive", dispose: async () => {} }
-        },
-        serveVerifiedUpdate: () => ({ baseUrl: "http://127.0.0.1:12345/private/", stop() {} }),
+        resolveVerifiedUpdate: async () => ({ manifest, archiveUrl: local.baseUrl + "/" + manifest.artifact.file }),
+        installedPreference: channel => channel === "canary" ? "beta" : "stable",
       },
       "./agent-mcp": { stopMcpConnections: cleanup.mcp ?? (async () => order.push("mcp")) },
       "./xn-connect-manager": { xnConnectManager: { stopAll: cleanup.relay ?? (async () => order.push("relay")) } },
@@ -191,18 +140,25 @@ import { resolveUpdatePreference } from "../../electrobun/main/update-preference
     vm.runInNewContext(source, { module, require: name => dependencies[name], Error, AbortController, AbortSignal, process: { platform: "win32", arch: "x64" } })
     module.exports.registerUpdater()
     return { check: handlers.get("update:check"), install: handlers.get("update:install"),
-      getChannel: handlers.get("update:get-channel"), settings,
+      getChannel: handlers.get("update:get-channel"),
       download: handlers.get("update:download"), changeChannel: value => handlers.get("update:set-channel")(null, value),
-      changeRecord: () => { prepared = Buffer.from("{}") }, cancel: handlers.get("update:cancel-install"), events, info, emit, gate, order, shutdown, beforeQuit }
+      cancel: handlers.get("update:cancel-install"), events, opened, info, emit, gate, order, shutdown, beforeQuit }
   }
+
   describe("updater", () => {
-    test("канал и версия установки сохраняются независимо, ручной выбор не сбрасывается", async () => {
+    test("канал задаёт сборка; выбор другой ветки открывает её релизы, а не меняет канал на месте", async () => {
       const app = fixture()
       assert.equal(await app.getChannel(), "beta")
-      assert.equal(app.settings.get("launcherUpdateChannelVersion"), "1.0.8-pre2")
-      await app.changeChannel("stable")
+      assert.deepEqual({ ...(await app.changeChannel("beta")) }, { state: "current" })
+      assert.deepEqual({ ...(await app.changeChannel("stable")) }, { state: "opened" })
+      assert.deepEqual(app.opened, ["https://github.com/MAINER4IK/Xneon-Launcher-bun/releases/latest"])
+    })
+
+    test("stable-сборка на 'Beta' открывает список релизов (канареечные видны вручную)", async () => {
+      const app = fixture({}, {}, "1.0.8")
       assert.equal(await app.getChannel(), "stable")
-      assert.equal(app.settings.get("launcherUpdateChannelVersion"), "1.0.8-pre2")
+      assert.deepEqual({ ...(await app.changeChannel("beta")) }, { state: "opened" })
+      assert.deepEqual(app.opened, ["https://github.com/MAINER4IK/Xneon-Launcher-bun/releases"])
     })
 
     test("SDK update ждёт общий cleanup файлов до закрытия БД", async () => {
@@ -237,11 +193,12 @@ import { resolveUpdatePreference } from "../../electrobun/main/update-preference
       assert.equal(app.events.at(-1).status, "error")
     })
 
-    test("проверка канала использует метаданные пакета, dev не обращается к feed", async () => {
-      const app = fixture({ getLocalInfo: async () => ({ channel: "dev", baseUrl: "http://localhost" }),
-        checkForUpdate: async () => { throw new Error("unexpected feed access") },
-      })
+    test("проверка требует канал и address identity пакета, иначе не ходит в feed", async () => {
+      const app = fixture({ getLocalInfo: async () => ({ channel: "dev", version: "1.0.8-pre2", baseUrl: "http://localhost" }),
+        checkForUpdate: async () => { throw new Error("unexpected feed access") } })
       assert.match((await app.check()).error, /does not support signed Windows updates/)
+      const wrong = fixture({ getLocalInfo: async () => ({ channel: "canary", version: "1.0.8-pre2", baseUrl: "https://evil.example/" }) })
+      assert.match((await wrong.check()).error, /does not support signed Windows updates/)
     })
 
     test("ошибка нативной установки отображается, даже если SDK разрешил Promise", async () => {
@@ -294,30 +251,18 @@ import { resolveUpdatePreference } from "../../electrobun/main/update-preference
       assert.match(app.events.at(-1).error, /restart did not start/)
     })
 
-    test("прогресс берётся из проверяемой загрузки, а не из нативной подготовки", async () => {
-      const app = fixture()
+    test("прогресс транслируется из SDK download-progress", async () => {
+      const app = fixture({ downloadUpdate: async () => { app.emit({ status: "download-progress", details: { progress: 25 } }) } })
       await app.check()
       assert.equal((await app.download()).success, true)
-      assert.deepEqual(app.events.filter(event => "percent" in event).map(event => event.percent), [25])
+      assert.ok(app.events.some(event => "percent" in event && event.percent === 25))
     })
 
-    test("смена канала сбрасывает подготовленный пакет", async () => {
+    test("скачивание не растягивается когда SDK уже приготовил обновление", async () => {
       const app = fixture()
       await app.check()
       assert.equal((await app.download()).success, true)
-      await app.changeChannel("beta")
-      await app.install()
-      assert.deepEqual(app.order, [])
-    })
-
-    test("изменение подготовленной записи блокирует передачу управления", async () => {
-      const app = fixture()
-      await app.check()
-      assert.equal((await app.download()).success, true)
-      app.changeRecord()
-      await app.install()
-      assert.deepEqual(app.order, ["mcp", "relay"])
-      assert.match(app.events.at(-1).error, /changed after verification/)
+      assert.equal(app.events.at(-1).status, "downloaded")
     })
   })
 }

@@ -16,6 +16,7 @@ export function SettingsUpdate() {
   const [channel, setChannel] = useState<UpdateChannel>("stable")
   const [pendingChannel, setPendingChannel] = useState<UpdateChannel | null>(null)
   const [savingChannel, setSavingChannel] = useState(false)
+  const [channelNotice, setChannelNotice] = useState<string | null>(null)
   const busy = savingChannel || status === "checking" || status === "downloading" || status === "preparing"
   const showError = useCallback((error: unknown) => {
     setStatus("error")
@@ -62,11 +63,9 @@ export function SettingsUpdate() {
     setPendingChannel(null)
     setSavingChannel(true)
     try {
-      await api.updateSetChannel(next)
-      setChannel(next)
-      setStatus("idle")
-      setRemoteVersion(null)
-      setProgress(null)
+      // Смена канала — установка сборки другого канала, а не смена предпочтения.
+      const result = await api.updateSetChannel(next)
+      setChannelNotice(result.state === "opened" ? t("launcherUpdate.channelSwitchOpened") : null)
       setErrorMsg(null)
     } catch (error) {
       showError(error)
@@ -160,10 +159,14 @@ export function SettingsUpdate() {
         onClose={() => setPendingChannel(null)}
         onConfirm={() => { void confirmChannel() }}
         title={t("launcherUpdate.channel")}
-        description={t(pendingChannel === "beta" ? "launcherUpdate.channelDescBeta" : "launcherUpdate.stableReturn")}
+        description={t("launcherUpdate.channelSwitchInfo")}
         variant="info"
         icon="info"
       />
+
+      {channelNotice && (
+        <p data-ui="settings-settings-update-p-5" data-settings-tone="green" className="text-xs leading-relaxed text-primary">{channelNotice}</p>
+      )}
 
       <div data-ui="settings-settings-update-div-12" className="border-t border-border" />
 

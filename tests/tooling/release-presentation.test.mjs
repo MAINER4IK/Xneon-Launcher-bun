@@ -91,12 +91,11 @@ test('Vite разрешает Share для renderer без Node и архивн�
   } finally { await fs.rm(directory, { recursive: true, force: true }) }
 })
 
-test('канал соответствует установленной версии, ручной выбор сохраняется до смены версии', async () => {
-  const { resolveUpdatePreference } = await import('../../electrobun/main/update-preference.ts')
-  assert.equal(resolveUpdatePreference('1.0.9-pre1', undefined, 'stable'), 'beta')
-  assert.equal(resolveUpdatePreference('1.0.9', undefined, 'beta'), 'stable')
-  assert.equal(resolveUpdatePreference('1.0.9-pre1', '1.0.8', 'stable'), 'beta')
-  assert.equal(resolveUpdatePreference('1.0.9', '1.0.9-pre1', 'beta'), 'stable')
-  assert.equal(resolveUpdatePreference('1.0.9', '1.0.9', 'beta'), 'beta')
-  assert.equal(resolveUpdatePreference('1.0.9-pre1', '1.0.9-pre1', 'stable'), 'stable')
+test('канал задаёт сборка: версия определяет канал, а канал — отображаемую ветку UI', async () => {
+  const { installedPreference, releaseChannelOf } = await import('../../electrobun/main/verified-update-feed.ts')
+  assert.equal(releaseChannelOf('1.0.9-pre1'), 'canary')
+  assert.equal(releaseChannelOf('1.0.9-beta2'), 'canary')
+  assert.equal(releaseChannelOf('1.0.9'), 'stable')
+  assert.equal(installedPreference('canary'), 'beta')
+  assert.equal(installedPreference('stable'), 'stable')
 })

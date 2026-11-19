@@ -1,7 +1,7 @@
 import type { ElectrobunConfig } from "electrobun"
 import packageJson from "./package.json"
 import { appIdentifier, portableAppIdentifier } from "./electrobun/main/app-identity"
-import { verifiedUpdateBridgeUrl } from "./electrobun/main/update-public-keys"
+import { updateBaseUrls } from "./electrobun/main/update-public-keys"
 
 const portable = process.env.XNEON_BUILD_PORTABLE === "1"
 const identifier = portable ? portableAppIdentifier : appIdentifier
@@ -37,7 +37,9 @@ export default {
   },
   scripts: { postBuild: "scripts/set-windows-executable-identity.ts" },
   release: {
-    baseUrl: process.platform === "win32" && artifactChannel !== "dev" ? verifiedUpdateBridgeUrl : "",
+    baseUrl: process.platform === "win32" && (artifactChannel === "stable" || artifactChannel === "canary")
+      ? updateBaseUrls[artifactChannel]
+      : "",
   },
   runtime: { exitOnLastWindowClosed: false, appUserModelId: identifier },
 } satisfies ElectrobunConfig

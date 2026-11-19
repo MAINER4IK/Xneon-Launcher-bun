@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process"
 import { zipSync } from "fflate"
 import { loadReactModule } from "../helpers/react-module.mjs"
 import { appIdentifier } from "../../electrobun/main/app-identity.ts"
-import { updatePublicKeys, verifiedUpdateBridgeUrl } from "../../electrobun/main/update-public-keys.ts"
+import { updatePublicKeys, updateBaseUrls } from "../../electrobun/main/update-public-keys.ts"
 
 const root=path.resolve(import.meta.dir,"../..")
 const read=file=>fs.readFile(path.join(root,file),"utf8")
@@ -110,7 +110,7 @@ async function fixture(t,platform="win",arch=platform==="macos"?"arm64":"x64") {
   const input=path.join(directory,"input"),tree=path.join(directory,"tree"),resources=path.join(tree,bundle,platform==="macos"?"Contents/Resources":"Resources")
   const bin=path.join(tree,bundle,platform==="macos"?"Contents/MacOS":"bin")
   await fs.mkdir(path.join(resources,"app/bun"),{recursive:true});await fs.mkdir(bin,{recursive:true});await fs.mkdir(input)
-  const local={displayName:"Xneon Launcher",identifier:appIdentifier,channel:"stable",version:"1.2.3",hash:"fixture123",baseUrl:platform==="win"?verifiedUpdateBridgeUrl:""}
+  const local={displayName:"Xneon Launcher",identifier:appIdentifier,channel:"stable",version:"1.2.3",hash:"fixture123",baseUrl:platform==="win"?updateBaseUrls.stable:""}
   await fs.writeFile(path.join(resources,"version.json"),JSON.stringify(local))
   const creds=Array.from({length:12},(_,index)=>`p${index}: { clientId: "" }`).join(",\n")
   const mainSource=`var cloudCredentials = {\n${creds}\n};\n`+Object.entries(updatePublicKeys).map(([key,pem])=>key+"\n"+pem.split("\n")[1]).join("\n")+"\nMAINER4IK/Xneon-Launcher-bun"

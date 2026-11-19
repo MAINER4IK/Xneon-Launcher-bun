@@ -40,13 +40,37 @@ canary: SDK + portable). Linux/macOS не блокируют публикаци�
 и список `targets` в `scripts/ci-pipeline.ts`. Проверки `tests` и signing по-прежнему выполняются на Ubuntu.
 На PR и push main запускается один Linux job с quality/offline gates, бюджет — 15 минут.
 Формат `-preN` согласован с updater; stable-релиз не содержит canary-файлов и наоборот.
-Явный выбор Beta/Stable в настройках разрешает обновление между каналами: подпись проверяется
-по каналу самого релиза, а нативный SDK получает через локальный bridge эквивалентный манифест
-своего канала. Переход возможен только на более новую версию, поэтому после stable `1.0.9`
-следующая канареечная сборка — `1.0.10-pre1`, а не `1.0.9-pre2`.
+
+## Обновления без локального bridge
+
+Раньше рабочий апдейтер ходил в локальный HTTP-bridge на фиксированном порту. Сейчас
+обновления читаются напрямую из плоских URL GitHub Releases — никакого API,
+фиксированного порта или внешнего сервера:
+
+- **stable**: `https://github.com/MAINER4IK/Xneon-Launcher-bun/releases/latest/download`
+  (latest-релиз, prereleases исключаются GitHub).
+- **beta/canary**: `https://github.com/MAINER4IK/Xneon-Launcher-bun/releases/download/canary`
+  (rolling-релиз с фиксированным тегом `canary`, помеченный prerelease, чтобы не
+  перехватывать «Latest»; пересоздаётся `pre-release.yml` на каждом канареечном релизе).
+
+**Канал задаёт сама сборка** (`Resources/version.json.channel`): stable-пакет читает
+`latest/download`, canary — `download/canary`. «Ветка обновлений» в настройках — это канал
+установленной сборки, а не предпочтение. Выбор другой ветки открывает страницу релизов
+нужного канала (`shell.openExternal`) и требует установки другой сборки; установка in-app
+через подписанный installer-каталог — отдельная задача.
+
+Поток обновления внутри канала: наш Ed25519-ключ проверяет манифест
+`<base>/<channel>-win-x64-update-v2.json` и подпись `.sig` (`resolveVerifiedUpdate`),
+затем SDK выполняет `checkForUpdate → downloadUpdate → applyUpdate`. Никакого
+temp-staging и перепроекции канала архива (`projectVerifiedArchive`) больше нет.
+Отсутствующий манифест (404) трактуется как «обновлений нет», поэтому каналу не нужен
+публичный релиз для работы. Переход возможен только на более новую версию, поэтому после
+stable `1.0.9` следующая канареечная сборка — `1.0.10-pre1`, а не `1.0.9-pre2`.
 Ручной запуск (`workflow_dispatch`) собирает artifacts без публикации; на tag — публикует.
 Signing и публикация используют environment `pre2-signing`, PR не получает release secrets.
 Локальный Windows-прогон не доказывает запуск native Linux/macOS или удалённого Worker.
+**Бутстрап**: старые сборки с baseUrl локального bridge сами обновиться не могут — первая
+GitHub-only версия устанавливается вручную.
 
 ## IPC и владение данными
 

@@ -1261,6 +1261,8 @@
   "launcherUpdate.channelDescBeta": "Beta — early access to new features",
   "launcherUpdate.channelStable": "Stable",
   "launcherUpdate.channelBeta": "Beta",
+  "launcherUpdate.channelSwitchInfo": "Switching between Stable and Beta requires installing the other build. We'll open that channel's releases page for you to download and install it manually. Your data will be kept.",
+  "launcherUpdate.channelSwitchOpened": "We opened the releases page for that channel. Install the build and restart the launcher.",
   "updates.title": "Updates",
   "updates.checkTitle": "Check for updates",
   "updates.checking": "Checking for updates...",
