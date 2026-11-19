@@ -46,7 +46,7 @@ export function registerUpdater() {
     if (installing) return { status: "preparing" as const, deferred: false }
     const local = await Updater.getLocalInfo()
     if (local.channel !== "stable" && local.channel !== "canary") return { status: "idle" as const, deferred: false }
-    const pending = await launcherUpdateState.peek({ ...local, channel: local.channel }, await Updater.appDataFolder())
+    const pending = await launcherUpdateState.peek({ ...local, channel: local.channel }, () => Updater.appDataFolder())
     downloaded = !!pending
     return pending ? { status: "downloaded" as const, version: pending.update.manifest.version, deferred: pending.deferred }
       : { status: "idle" as const, deferred: false }
@@ -164,7 +164,7 @@ export function registerUpdater() {
     try {
       const local = await Updater.getLocalInfo()
       if (local.channel !== "stable" && local.channel !== "canary") throw new Error("Unsupported installed channel")
-      await launcherUpdateState.defer({ ...local, channel: local.channel }, await Updater.appDataFolder())
+      await launcherUpdateState.defer({ ...local, channel: local.channel }, () => Updater.appDataFolder())
       return { success: true }
     } catch (error) { return { success: false, error: updateError(error) } }
   })
@@ -191,7 +191,7 @@ export function registerUpdater() {
       if (isLaunchActive()) throw new Error("Minecraft is running.")
       const local = await Updater.getLocalInfo()
       if (local.channel !== "stable" && local.channel !== "canary") throw new Error("Unsupported installed channel")
-      const pending = await launcherUpdateState.peek({ ...local, channel: local.channel }, await Updater.appDataFolder())
+      const pending = await launcherUpdateState.peek({ ...local, channel: local.channel }, () => Updater.appDataFolder())
       if (!pending || (pending.kind === "sdk" && !Updater.updateInfo().updateReady)) throw new Error("Update is not prepared.")
       await withinDeadline(
         Promise.allSettled([stopMcpConnections(true), xnConnectManager.stopAll()]).then(results => {
