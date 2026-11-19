@@ -7,6 +7,8 @@ export type PackageChannel = "stable" | "canary"
 export type VerifiedUpdate = {
   manifest: ReturnType<typeof verifySignedWindowsUpdateManifest>
   archiveUrl: string
+  manifestBytes: Buffer
+  signatureBytes: Buffer
 }
 
 const MANIFEST_BYTES = 64 * 1024
@@ -117,5 +119,5 @@ export async function resolveVerifiedUpdate(currentVersion: string, channel: Pac
   // равная версия падала бы как ошибка, хотя обновления просто нет.
   const manifest = verifySignedWindowsUpdateManifest(bytes, signature, updatePublicKeys, "0.0.0", channel, channel)
   if (!isNewerRelease(manifest.version, currentVersion)) return null
-  return { manifest, archiveUrl: `${base}/${manifest.artifact.file}` }
+  return { manifest, archiveUrl: `${base}/${manifest.artifact.file}`, manifestBytes: bytes, signatureBytes: signature }
 }
