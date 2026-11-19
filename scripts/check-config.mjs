@@ -57,7 +57,7 @@ const prerelease = await pipeline('pre-release.yml', 'canary', 'v*-pre*', 'Prere
 const named = (job, name) => job.steps.find(step => step.name === name)
 assert.ok(named(release.jobs.build, 'Ensure NSIS'), 'Stable Windows build installs NSIS')
 assert.ok(named(release.jobs.build, 'Build and validate independent Portable profile'), 'Stable builds independent portable')
-assert.ok(!named(prerelease.jobs.build, 'Ensure NSIS'), 'Prerelease never builds the NSIS installer')
+assert.ok(named(prerelease.jobs.build, 'Ensure NSIS'), 'Canary also ships the NSIS installer used for channel switching')
 assert.ok(named(prerelease.jobs.build, 'Build and validate independent Portable profile'), 'Prerelease builds independent portable')
 assert.equal(named(release.jobs.build, 'Build stable native artifacts (NSIS on Windows only)').run, 'bun run build')
 assert.equal(named(prerelease.jobs.build, 'Build canary native artifacts').run, 'bun run build:canary')

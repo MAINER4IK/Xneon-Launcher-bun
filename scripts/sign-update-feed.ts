@@ -29,7 +29,21 @@ const tar = Bun.zstdDecompressSync(archive)
 const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
 assert.equal(tar.length, artifact.tarSize)
 assert.equal(sha256(tar), artifact.tarSha256)
-const bytes = Buffer.from(JSON.stringify({ ...manifest, artifact: { ...artifact, downloadSize: archive.length, downloadSha256: sha256(archive) } }))
+
+// NSIS-установщик того же канала: смена канала в приложении ставит его поверх.
+// Его хеш входит в подписанный манифест, поэтому загрузка с GitHub проверяема.
+const installerName = `xneon-launcher-${packageJson.version}-win-x64.exe`
+const installerPath = path.join(input, installerName)
+let installer: { file: string; size: number; sha256: string } | undefined
+try {
+  const installerInfo = await stat(installerPath)
+  assert.ok(installerInfo.isFile() && installerInfo.size > 1024 ** 2 && installerInfo.size < 512 * 1024 ** 2, "Invalid installer size")
+  installer = { file: installerName, size: installerInfo.size, sha256: sha256(await readFile(installerPath)) }
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
+}
+
+const bytes = Buffer.from(JSON.stringify({ ...manifest, ...(installer ? { installer } : {}), artifact: { ...artifact, downloadSize: archive.length, downloadSha256: sha256(archive) } }))
 const signature = sign(null, bytes, privateKey)
 verifyWindowsUpdateManifest(bytes, signature, publicKey, "0.0.0", channel, "canary")
 

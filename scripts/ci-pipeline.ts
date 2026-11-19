@@ -81,8 +81,8 @@ const nativeSets = (version: string) => {
     arch: target.arch,
     channel,
     version,
-    // NSIS-установщик собирается только для стабильного Windows-канала.
-    nsis: target.platform === "win" && channel === "stable",
+    // NSIS собирается для обоих Windows-каналов: это единственный способ сменить канал.
+    nsis: target.platform === "win",
   }))
 }
 const portableName = (version: string) => `xneon-launcher-${version}-win-x64-portable.zip`
@@ -164,7 +164,7 @@ export async function verifyPublication(directory: string, version: string) {
     const signed = path.join(scratch, "signed")
     await mkdir(signed)
     const channel = releaseChannel(version)
-    const signedNames = [...(channel === "stable" ? [`xneon-launcher-${version}-win-x64.exe`] : []), ...[
+    const signedNames = [`xneon-launcher-${version}-win-x64.exe`, ...[
       `${channel}-win-x64-update-v2.json`, `${channel}-win-x64-update-v2.json.sig`,
       nativeArtifactNames({ platform: "win", arch: "x64", channel, version })[2],
     ]]

@@ -1,12 +1,14 @@
 import packageJson from "../../package.json"
+import { spawn } from "node:child_process"
 import Electrobun, { Updater } from "electrobun/main"
-import { app, rpcRegistry, shell } from "../platform/desktop"
+import { app, rpcRegistry } from "../platform/desktop"
 import { launcherOperations, withinDeadline } from "../platform/operation-gate"
 import { closeDatabaseForUpdate } from "../db/core"
 import { initDatabase } from "../db"
 import { isPortable } from "./profile-path"
 import { expectedUpdateBaseUrl } from "./update-public-keys"
 import { installedPreference, resolveVerifiedUpdate, type PackageChannel, type VerifiedUpdate } from "./verified-update-feed"
+import { downloadChannelInstaller } from "./channel-switch"
 import { stopMcpConnections } from "./agent-mcp"
 import { xnConnectManager } from "./xn-connect-manager"
 import { isLaunchActive } from "./minecraft-core"
@@ -26,6 +28,7 @@ let installing = false
 let restartRequested = false
 let nativeQuitAllowed = false
 let cancellation: AbortController | undefined
+let switching = false
 
 function updateError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error)
@@ -38,19 +41,49 @@ export function registerUpdater() {
 
   rpcRegistry.handle("update:set-channel", async (_event, channel: "stable" | "beta") => {
     if (channel !== "stable" && channel !== "beta") throw new Error("Unknown update channel")
-    if (checking || downloading || installing || restartRequested) throw new Error("Update is in progress")
+    if (checking || downloading || installing || restartRequested || switching) throw new Error("Update is in progress")
+    const target: PackageChannel = channel === "beta" ? "canary" : "stable"
+    if (target === installedChannel()) return { state: "current" as const }
+    // SDK принимает только манифест своего канала, поэтому смена канала — это
+    // установка сборки другого канала через подписанный NSIS-установщик.
+    if (isPortable) return { state: "error" as const, error: "Portable builds require manual updates." }
+    switching = true
+    let databaseClosed = false
+    let prepared = false
     try {
-      // SDK не позволяет сменить канал на месте: manifest.channel обязан совпадать с
-      // version.json.channel. Смена канала — установка сборки другого канала; пока открываем
-      // страницу релизов целевого канала (установка in-app — отдельная задача).
-      if (channel === installedPreference(installedChannel())) return { state: "current" as const }
-      await shell.openExternal(channel === "beta"
-        ? "https://github.com/MAINER4IK/Xneon-Launcher-bun/releases"
-        : "https://github.com/MAINER4IK/Xneon-Launcher-bun/releases/latest")
-      return { state: "opened" as const }
+      sendToRenderer("update:status", { status: "downloading" })
+      const installer = await downloadChannelInstaller(target)
+      sendToRenderer("update:status", { status: "preparing" })
+      launcherOperations.blocked = true
+      const cleanup = await launcherShutdown.prepare("update")
+      prepared = true
+      if (cleanup.status !== "completed" || cleanup.failed.length || cleanup.timedOut.length) throw new Error("Update cleanup did not finish successfully.")
+      closeDatabaseForUpdate()
+      databaseClosed = true
+      const child = spawn(installer.path, ["/S", "--force-run"], { detached: true, stdio: "ignore" })
+      child.on("error", error => console.error("[Updater] Channel installer failed to start", error))
+      child.unref()
+      nativeQuitAllowed = true
+      sendToRenderer("update:status", { status: "preparing", version: installer.version })
+      // prepare уже выполнил задачи cleanup; run только отдаёт выход нативному слою.
+      await launcherShutdown.run("update")
+      return { state: "switching" as const, version: installer.version }
     } catch (error) {
+      nativeQuitAllowed = false
+      if (prepared && launcherShutdown.finished) launcherShutdown.resetAfterCancelledUpdate()
+      if (databaseClosed) {
+        try {
+          await initDatabase()
+        } catch (recoveryError) {
+          const message = `Channel switch failed and the database could not be reopened: ${String(recoveryError)}`
+          sendToRenderer("update:status", { status: "error", error: message })
+          return { state: "error" as const, error: message }
+        }
+      }
+      launcherOperations.blocked = false
+      app.emit("reopen")
       return { state: "error" as const, error: updateError(error) }
-    }
+    } finally { switching = false }
   })
 
   if (isPortable) {

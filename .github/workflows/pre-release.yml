@@ -66,7 +66,8 @@ jobs:
           bun run build:renderer
           bun run build:workers
 
-  # NSIS остаётся в stable; portable собирается независимо и для canary.
+  # NSIS собирается в обоих каналах: он же переключает канал из приложения.
+  # Portable собирается независимо и тоже для canary.
   build:
     needs: tests
     if: >-
@@ -103,6 +104,22 @@ jobs:
           else
             test "$(uname -m)" = "$EXPECTED_MACHINE"
           fi
+      - name: Ensure NSIS
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $candidates = @(@(
+            (Join-Path $env:ProgramFiles 'NSIS\makensis.exe'),
+            (Join-Path ${env:ProgramFiles(x86)} 'NSIS\makensis.exe')
+          ) | Where-Object { Test-Path -LiteralPath $_ })
+          if (-not $candidates) {
+            choco install nsis --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $candidates = @(@((Join-Path ${env:ProgramFiles(x86)} 'NSIS\makensis.exe')) | Where-Object { Test-Path -LiteralPath $_ })
+          }
+          if (-not $candidates) { throw 'makensis (NSIS 3) is required to build the Windows installer' }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value ('XNEON_MAKENSIS=' + $candidates[0])
+          & $candidates[0] /VERSION
       - name: Build canary native artifacts
         run: bun run build:canary
       - name: Verify native platform adapters skipped on Ubuntu
@@ -268,7 +285,4 @@ jobs:
             --title "Canary (Xneon Launcher)" \
             --prerelease \
             --latest=false \
-            verified/canary-win-x64-update.json \
-            verified/canary-win-x64-update-v2.json \
-            verified/canary-win-x64-update-v2.json.sig \
-            verified/canary-win-x64-XneonLauncher.tar.zst
+            verified/*
