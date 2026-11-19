@@ -104,8 +104,11 @@ export async function discoverVerifiedUpdate(current: string, channel: PackageCh
  */
 export function bridgeUpdateArtifact(update: VerifiedUpdate) {
   const installedChannel = update.installedChannel ?? update.manifest.channel
-  const targetPrefix = `${update.manifest.channel}-win-x64-`
-  const file = `${installedChannel}-win-x64-${update.manifest.artifact.file.slice(targetPrefix.length)}`
+  const source = update.manifest.artifact.file
+  const sourcePrefix = `${update.manifest.channel}-win-x64-`
+  const file = source.startsWith(sourcePrefix)
+    ? `${installedChannel}-win-x64-${source.slice(sourcePrefix.length)}`
+    : source
   return {
     file,
     manifest: {

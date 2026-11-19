@@ -130,11 +130,14 @@ import { resolveUpdatePreference } from "../../electrobun/main/update-preference
   function fixture(overrides = {}, cleanup = {}) {
     const handlers = new Map()
     const events = []
-    const manifest = { version: "1.0.9", hash: "next123", artifact: { file: "stable-win-x64-XneonLauncher.tar.zst" } }
+    // Релиз подписан своим каналом (canary), а установка — stable: bridge проецирует имя артефакта.
+    const manifest = { version: "1.0.9", channel: "canary", hash: "next123", artifact: { file: "canary-win-x64-XneonLauncher.tar.zst" } }
     const info = { updateAvailable: true, updateReady: true, version: manifest.version, hash: manifest.hash, error: "" }
     const local = { channel: "stable", version: "1.0.8-pre2", hash: "old123", baseUrl: "http://127.0.0.1:53749/xneon-verified-update/" }
     const settings = new Map()
-    let prepared = Buffer.from(JSON.stringify({ schema_version: 2, hash: manifest.hash, version: manifest.version, artifact_file: manifest.artifact.file }))
+    // SDK хранит в записи тот манифест, который отдал bridge, то есть уже спроецированное имя.
+    const preparedArtifact = bridgeUpdateArtifact({ manifest, installedChannel: local.channel }).file
+    let prepared = Buffer.from(JSON.stringify({ schema_version: 2, hash: manifest.hash, version: manifest.version, artifact_file: preparedArtifact }))
     let emit
     const order = []
     const gate = new OperationGate()
@@ -171,7 +174,8 @@ import { resolveUpdatePreference } from "../../electrobun/main/update-preference
       },
       "./update-public-keys": { verifiedUpdateBridgeUrl: local.baseUrl },
       "./verified-update-feed": {
-        discoverVerifiedUpdate: async () => ({ manifest }),
+        bridgeUpdateArtifact,
+        discoverVerifiedUpdate: async () => ({ manifest, installedChannel: local.channel }),
         stageVerifiedArchive: async (_update, _temp, _signal, report) => {
           report(50, 200)
           return { file: "fixture-archive", dispose: async () => {} }
