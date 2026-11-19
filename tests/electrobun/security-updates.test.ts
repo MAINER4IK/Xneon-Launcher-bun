@@ -6,8 +6,10 @@ import { createWriteStream } from "node:fs"
 import { mkdir, readFile, rm, stat } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { Readable } from "node:stream"
+import { pipeline } from "node:stream/promises"
 import { describe, test } from "bun:test"
-import { installedPreference, isAllowedUpdateRedirect, manifestUrls, releaseChannelOf } from "../../electrobun/main/verified-update-feed.ts"
+import { installedPreference, isAllowedUpdateRedirect, isNewerRelease, manifestUrls, releaseChannelOf } from "../../electrobun/main/verified-update-feed.ts"
 import { verifySignedWindowsUpdateManifest, verifyWindowsUpdateManifest } from "../../electrobun/main/verified-update-manifest.ts"
 import { appIdentifier } from "../../electrobun/main/app-identity.ts"
 import nodeTest from "node:test"
@@ -34,6 +36,15 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
       assert.equal(canary.base, "https://github.com/MAINER4IK/Xneon-Launcher-bun/releases/download/canary")
       assert.equal(canary.manifestUrl, canary.base + "/canary-win-x64-update-v2.json")
       assert.equal(canary.signatureUrl, canary.base + "/canary-win-x64-update-v2.json.sig")
+    })
+
+    test("равная или более старая версия — не обновление, а не ошибка", () => {
+      assert.equal(isNewerRelease("1.0.11", "1.0.11"), false)
+      assert.equal(isNewerRelease("1.0.11-pre1", "1.0.11"), false)
+      assert.equal(isNewerRelease("1.0.10", "1.0.11"), false)
+      assert.equal(isNewerRelease("1.0.12", "1.0.11"), true)
+      assert.equal(isNewerRelease("1.0.11-pre2", "1.0.11-pre1"), true)
+      assert.throws(() => isNewerRelease("1.0", "1.0.11"), /Invalid update version/)
     })
 
     test("редирект latest/download через канонический тег разрешён, посторонние хосты — нет", () => {
@@ -144,8 +155,9 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
         spawned.push({ file, args, options })
         return { on() {}, unref() {} }
       } },
-      "./channel-switch": { downloadChannelInstaller: cleanup.installer ?? (async channel => {
+      "./channel-switch": { downloadChannelInstaller: cleanup.installer ?? (async (channel, onProgress) => {
         downloads.push(channel)
+        onProgress?.({ percent: 25, transferred: 25, total: 100 })
         const version = channel === "canary" ? "1.0.9-pre1" : "1.0.9"
         return { channel, version, file: `xneon-launcher-${version}-win-x64.exe`, path: `fixture-installer-${channel}.exe` }
       }) },
@@ -188,6 +200,14 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
       assert.deepEqual({ ...(await app.changeChannel("beta")) }, { state: "switching", version: "1.0.9-pre1" })
       assert.deepEqual(app.downloads, ["canary"])
       assert.equal(app.spawned[0].file, "fixture-installer-canary.exe")
+    })
+
+    test("смена канала передаёт в UI начальный и реальный прогресс установщика", async () => {
+      const app = fixture({}, {}, "1.0.8")
+      await app.changeChannel("beta")
+      const progress = app.events.filter(event => "percent" in event)
+      assert.equal(progress[0]?.percent, 0)
+      assert.ok(progress.some(event => event.percent === 25 && event.transferred === 25 && event.total === 100))
     })
 
     test("сбой загрузки установщика не блокирует лаунчер и возвращает канал", async () => {
@@ -336,7 +356,19 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
       fetch(request) {
         const name = new URL(request.url).pathname.slice(1)
         const body = files.get(name)
-        return body ? new Response(body) : new Response("missing", { status: 404 })
+        if (!body) return new Response("missing", { status: 404 })
+        if (options.stream && name === installerName) {
+          let offset = 0
+          return new Response(new ReadableStream({
+            async pull(controller) {
+              await Bun.sleep(5)
+              if (offset >= body.length) { controller.close(); return }
+              controller.enqueue(body.subarray(offset, offset + 4))
+              offset += 4
+            },
+          }))
+        }
+        return new Response(body)
       },
     })
     const origin = `http://127.0.0.1:${server.port}`
@@ -356,6 +388,8 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
       "node:events": { once },
       "node:fs": { createWriteStream },
       "node:fs/promises": { mkdir, rm, stat },
+      "node:stream": { Readable },
+      "node:stream/promises": { pipeline },
       "node:os": os,
       "node:path": path,
       "./update-public-keys": { updatePublicKeys: { fixture: publicKey.export({ type: "spki", format: "pem" }) } },
@@ -383,6 +417,27 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
   }
 
   describe("channel-switch", () => {
+    test("проценты идут по подписанному размеру без Content-Length, 100% только после проверки", async () => {
+      const { origin, server } = await serve(installerBytes, { stream: true })
+      const progress = []
+      try {
+        const installer = await load(origin)("canary", value => progress.push(value))
+        assert.equal(progress[0]?.percent, 0)
+        assert.ok(progress.some(value => value.percent > 0 && value.percent < 100))
+        assert.equal(progress.at(-1)?.percent, 100)
+        assert.equal(progress.at(-1)?.transferred, installerBytes.length)
+        for (const [index, value] of progress.entries()) {
+          assert.equal(value.total, installerBytes.length)
+          assert.ok(value.percent >= 0 && value.percent <= 100)
+          if (index) assert.ok(value.percent >= progress[index - 1].percent)
+        }
+        assert.deepEqual(await readFile(installer.path), installerBytes)
+      } finally {
+        server.stop(true)
+        await rm(path.join(os.tmpdir(), "xneon-channel-installer"), { recursive: true, force: true })
+      }
+    })
+
     test("скачивает установщик целевого канала и сверяет его с подписанным манифестом", async () => {
       const { origin, server } = await serve(installerBytes)
       try {
@@ -400,7 +455,9 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
     test("подменённый установщик отвергается по хешу из подписи", async () => {
       const { origin, server } = await serve(Buffer.alloc(installerBytes.length, 0x41), { installer: { size: installerBytes.length } })
       try {
-        await assert.rejects(load(origin)("canary"), /hash/)
+        const progress = []
+        await assert.rejects(load(origin)("canary", value => progress.push(value)), /hash/)
+        assert.ok(!progress.some(value => value.percent === 100))
       } finally {
         server.stop(true)
         await rm(path.join(os.tmpdir(), "xneon-channel-installer"), { recursive: true, force: true })

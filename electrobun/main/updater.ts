@@ -52,7 +52,8 @@ export function registerUpdater() {
     let prepared = false
     try {
       sendToRenderer("update:status", { status: "downloading" })
-      const installer = await downloadChannelInstaller(target)
+      sendToRenderer("update:progress", { percent: 0, transferred: 0, total: 0 })
+      const installer = await downloadChannelInstaller(target, progress => sendToRenderer("update:progress", progress))
       sendToRenderer("update:status", { status: "preparing" })
       launcherOperations.blocked = true
       const cleanup = await launcherShutdown.prepare("update")
