@@ -8,6 +8,7 @@ import { compareReleaseVersions, verifySignedWindowsUpdateManifest } from "./ver
 import type { PackageChannel, VerifiedUpdate } from "./verified-update-feed"
 
 export type InstalledUpdateIdentity = { channel: PackageChannel; version: string; hash: string }
+export type SdkUpdateRoot = string | (() => Promise<string>)
 type SavedUpdate = {
   kind: "sdk" | "installer"; channel: PackageChannel; fromHash: string; fromChannel: PackageChannel
   manifest: string; signature: string; deferred: boolean
@@ -96,7 +97,7 @@ export class UpdateStateStore {
     await this.write({ channel: pending.channel, pending })
   }
 
-  async peek(local: InstalledUpdateIdentity, sdkRoot?: string): Promise<PendingUpdate | null> {
+  async peek(local: InstalledUpdateIdentity, sdkRoot?: SdkUpdateRoot): Promise<PendingUpdate | null> {
     const state = await this.read()
     const saved = state.pending
     if (!saved) return null
@@ -109,7 +110,8 @@ export class UpdateStateStore {
     let file: string | undefined
     if (saved.kind === "installer") file = await this.verifyInstaller(update)
     else if (sdkRoot) {
-      const prepared = await this.readJson(path.join(sdkRoot, ".electrobun-prepared-update.json"), 64 * 1024) as Record<string, unknown>
+      const directory = typeof sdkRoot === "function" ? await sdkRoot() : sdkRoot
+      const prepared = await this.readJson(path.join(directory, ".electrobun-prepared-update.json"), 64 * 1024) as Record<string, unknown>
       for (const key of ["identifier", "channel", "version", "hash", "platform", "arch"] as const) {
         assert.equal(prepared[key], update.manifest[key], "SDK prepared update differs from signed manifest")
       }
@@ -118,7 +120,7 @@ export class UpdateStateStore {
     return { kind: saved.kind, deferred: saved.deferred === true, update, path: file }
   }
 
-  async defer(local: InstalledUpdateIdentity, sdkRoot?: string) {
+  async defer(local: InstalledUpdateIdentity, sdkRoot?: SdkUpdateRoot) {
     assert.ok(await this.peek(local, sdkRoot), "No downloaded update to defer")
     const state = await this.read()
     assert.ok(state.pending, "No downloaded update to defer")

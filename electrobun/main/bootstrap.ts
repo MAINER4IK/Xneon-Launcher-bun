@@ -66,27 +66,27 @@ async function start() {
   }
   if (!isPortable && process.platform === "win32" && process.arch === "x64") {
     try {
-    const { Updater } = await import("electrobun/main")
-    const local = await Updater.getLocalInfo()
-    if (local.channel === "stable" || local.channel === "canary") {
-      const { launcherUpdateState } = await import("./update-state")
-      const { resumeDeferredUpdate } = await import("./update-startup")
-      if (await resumeDeferredUpdate({
-        local: { ...local, channel: local.channel }, sdkRoot: await Updater.appDataFolder(), store: launcherUpdateState,
-        launchInstaller: async file => {
-          const child = spawn(file, ["/S", "--force-run"], { detached: true, stdio: "ignore" })
-          await new Promise<void>((resolve, reject) => { child.once("spawn", resolve); child.once("error", reject) })
-          child.unref()
-        },
-        applySdk: async () => {
-          let restarting = false
-          Updater.onStatusChange(({ status }) => { if (status === "launching-new-version") restarting = true })
-          await Updater.applyUpdate()
-          if (!restarting) throw new Error(Updater.updateInfo().error || "Deferred update restart did not start")
-        },
-        quit: () => quitNative(0), onError: error => console.error("[Updater] Deferred update was not applied", error),
-      })) return
-    }
+      const { Updater } = await import("electrobun/main")
+      const local = await Updater.getLocalInfo()
+      if (local.channel === "stable" || local.channel === "canary") {
+        const { launcherUpdateState } = await import("./update-state")
+        const { resumeDeferredUpdate } = await import("./update-startup")
+        if (await resumeDeferredUpdate({
+          local: { ...local, channel: local.channel }, sdkRoot: () => Updater.appDataFolder(), store: launcherUpdateState,
+          launchInstaller: async file => {
+            const child = spawn(file, ["/S", "--force-run"], { detached: true, stdio: "ignore" })
+            await new Promise<void>((resolve, reject) => { child.once("spawn", resolve); child.once("error", reject) })
+            child.unref()
+          },
+          applySdk: async () => {
+            let restarting = false
+            Updater.onStatusChange(({ status }) => { if (status === "launching-new-version") restarting = true })
+            await Updater.applyUpdate()
+            if (!restarting) throw new Error(Updater.updateInfo().error || "Deferred update restart did not start")
+          },
+          quit: () => quitNative(0), onError: error => console.error("[Updater] Deferred update was not applied", error),
+        })) return
+      }
     } catch (error) {
       // Повреждённый кэш обновлений не должен мешать открыть рабочий лаунчер.
       console.error("[Updater] Could not inspect deferred update", error)

@@ -33,7 +33,7 @@ test("канал сохраняется без загрузки, скачанн�
     await store.stage("installer", local, update, source)
     assert.equal((await store.peek(local))?.deferred, false)
     await store.defer(local)
-    const pending = await new UpdateStateStore(root, keys).peek(local)
+    const pending = await new UpdateStateStore(root, keys).peek(local, async () => { throw new Error("NSIS must not resolve SDK paths") })
     assert.equal(pending?.deferred, true)
     assert.deepEqual(await readFile(pending!.path!), payload)
     await store.selectChannel("stable")

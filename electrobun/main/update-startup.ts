@@ -1,8 +1,8 @@
-import type { InstalledUpdateIdentity, UpdateStateStore } from "./update-state"
+import type { InstalledUpdateIdentity, SdkUpdateRoot, UpdateStateStore } from "./update-state"
 
 /** Только явно отложенное обновление; проверка и применение до открытия БД и окна. */
 export async function resumeDeferredUpdate(options: {
-  local: InstalledUpdateIdentity; sdkRoot: string
+  local: InstalledUpdateIdentity; sdkRoot: SdkUpdateRoot
   store: Pick<UpdateStateStore, "peek" | "clearPending">
   launchInstaller: (file: string) => Promise<void>
   applySdk: () => Promise<void>; quit: () => Promise<void>; onError: (error: unknown) => void
