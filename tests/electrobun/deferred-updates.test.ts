@@ -58,3 +58,23 @@ test("отложенный установщик заново проверяет�
     await assert.rejects(store.stage("installer", local, bad, source), /signature/)
   } finally { await rm(root, { recursive: true, force: true }) }
 })
+
+test("SDK prepared-record должен совпадать с сохранённым подписанным манифестом", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "xneon-deferred-"))
+  try {
+    const store = new UpdateStateStore(root, keys)
+    const manifest = { ...document, channel: "stable", version: "1.0.9", artifact: { ...document.artifact, file: "stable-win-x64-XneonLauncher.tar.zst" } }
+    const bytes = Buffer.from(JSON.stringify(manifest))
+    const signature = Buffer.from(JSON.stringify({ keyId: "fixture", signature: sign(null, bytes, privateKey).toString("base64") }))
+    await store.stage("sdk", local, { manifest, manifestBytes: bytes, signatureBytes: signature, archiveUrl: "" })
+    const prepared = { ...manifest, artifact_file: manifest.artifact.file }
+    await writeFile(path.join(root, ".electrobun-prepared-update.json"), JSON.stringify(prepared))
+    assert.equal((await store.peek(local, async () => root))?.kind, "sdk")
+    await store.defer(local, async () => root)
+    assert.equal((await store.peek(local, root))?.deferred, true)
+    await writeFile(path.join(root, ".electrobun-prepared-update.json"), JSON.stringify({ ...prepared, hash: "other123" }))
+    await assert.rejects(store.peek(local, root), /SDK prepared update/)
+    assert.equal(await store.peek({ channel: "stable", version: "1.0.9", hash: "new123" }, root), null)
+    assert.equal(await store.peek(local), null)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
