@@ -1,6 +1,10 @@
 // Public Ed25519 keys reviewed before publishing a signed update channel.
 export const updatePublicKeys: Readonly<Record<string, string>> = Object.freeze({
+  // Прежний ключ: приватная часть недоступна, но оставлен, чтобы уже выпущенные
+  // сборки могли проверять ранее подписанные манифесты.
   "ed25519-892052829307b55db09f6f02": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAOc0o+//R5yPiWZZLJvRO8TUrVaTIkh5G56D4r3czT0A=\n-----END PUBLIC KEY-----\n",
+  // Действующий ключ подписи каналов stable/canary.
+  "ed25519-b0a245d9504c880c0b0e7792": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAKe/0B0n1ZGUVPCDjFwKmjCXR3GSAjK/wTuKeR1SI8D4=\n-----END PUBLIC KEY-----\n",
 })
 
 export type UpdateChannelKey = "stable" | "canary"
