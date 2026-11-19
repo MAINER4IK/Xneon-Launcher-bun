@@ -1,10 +1,12 @@
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
-import { once } from "node:events"
 import { createWriteStream } from "node:fs"
 import { mkdir, rm, stat } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { Readable } from "node:stream"
+import { pipeline } from "node:stream/promises"
+import type { IpcEventMap } from "@xnlc/types"
 import { updatePublicKeys } from "./update-public-keys"
 import { manifestUrls, updateFeedGet, updateFeedReadBounded, type PackageChannel } from "./verified-update-feed"
 import { verifySignedWindowsUpdateManifest } from "./verified-update-manifest"
@@ -23,7 +25,10 @@ export type ChannelInstaller = { channel: PackageChannel; version: string; file:
  * Поэтому качаем NSIS-установщик целевого канала и сверяем его с подписанным
  * манифестом (Ed25519), а не полагаемся только на TLS GitHub.
  */
-export async function downloadChannelInstaller(channel: PackageChannel): Promise<ChannelInstaller> {
+export async function downloadChannelInstaller(
+  channel: PackageChannel,
+  onProgress?: (progress: IpcEventMap["update:progress"]) => void,
+): Promise<ChannelInstaller> {
   const signal = AbortSignal.timeout(180_000)
   const { base, manifestUrl, signatureUrl } = manifestUrls(channel)
   const manifestResponse = await updateFeedGet(manifestUrl, signal)
@@ -52,31 +57,36 @@ export async function downloadChannelInstaller(channel: PackageChannel): Promise
 
   const hash = createHash("sha256")
   let size = 0
-  const sink = createWriteStream(file)
-  const reader = response.body.getReader()
-  try {
-    for (;;) {
-      const chunk = await reader.read()
-      if (chunk.done) break
-      size += chunk.value.length
-      if (size > MAX_INSTALLER_BYTES) throw new Error("Installer is oversized")
-      hash.update(chunk.value)
-      // once() снимает обработчики после срабатывания: иначе каждая пауза на
-      // backpressure оставляла бы лишний error-listener на потоке.
-      if (!sink.write(Buffer.from(chunk.value))) await once(sink, "drain")
-    }
-  } finally {
-    sink.end()
-    await reader.cancel().catch(() => {})
+  let lastPercent = -1
+  const report = (percent: number) => {
+    if (percent === lastPercent) return
+    lastPercent = percent
+    onProgress?.({ percent, transferred: size, total: installer.size })
   }
-  await new Promise<void>((resolve, reject) => {
-    sink.once("close", resolve)
-    sink.once("error", reject)
-  })
+  report(0)
+  const reader = response.body.getReader()
+  async function* chunks() {
+    try {
+      for (;;) {
+        const chunk = await reader.read()
+        if (chunk.done) break
+        size += chunk.value.length
+        if (size > installer.size) throw new Error("Downloaded installer size exceeds the signed manifest")
+        hash.update(chunk.value)
+        // Размер берём из подписи, а не из необязательного Content-Length.
+        // 100% означает завершённую запись и успешную проверку файла.
+        report(Math.min(99, Math.floor(size / installer.size * 100)))
+        yield Buffer.from(chunk.value)
+      }
+    } finally { await reader.cancel().catch(() => {}) }
+  }
+  // pipeline обслуживает backpressure и ошибки диска без слушателя на каждый чанк.
+  await pipeline(Readable.from(chunks()), createWriteStream(file), { signal })
 
   assert.equal(size, installer.size, "Downloaded installer size differs from the signed manifest")
   assert.equal(hash.digest("hex"), installer.sha256, "Downloaded installer hash differs from the signed manifest")
   assert.equal((await stat(file)).size, installer.size)
+  report(100)
 
   return { channel, version: manifest.version, file: installer.file, path: file }
 }

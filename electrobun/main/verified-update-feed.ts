@@ -1,5 +1,5 @@
 import { APP_USER_AGENT } from "../../lib/app-meta"
-import { verifySignedWindowsUpdateManifest } from "./verified-update-manifest"
+import { compareReleaseVersions, verifySignedWindowsUpdateManifest } from "./verified-update-manifest"
 import { expectedUpdateBaseUrl, updatePublicKeys } from "./update-public-keys"
 
 export type PackageChannel = "stable" | "canary"
@@ -88,6 +88,15 @@ export function manifestUrls(channel: PackageChannel) {
 }
 
 /**
+ * Опубликованная сборка считается обновлением только если она новее установленной.
+ * Совпадение версий — обычное состояние «последняя версия уже стоит», а не ошибка:
+ * иначе проверка обновлений на актуальной сборке показывала красный текст.
+ */
+export function isNewerRelease(candidate: string, currentVersion: string): boolean {
+  return compareReleaseVersions(candidate, currentVersion) > 0
+}
+
+/**
  * Канал задаёт сама сборка (`Resources/version.json.channel`): stable-пакет читает
  * `releases/latest/download`, canary — `releases/download/canary`. Манифест и его
  * подпись проверяются нашим Ed25519-ключом до передачи в SDK. Сеть не нужна,
@@ -103,6 +112,10 @@ export async function resolveVerifiedUpdate(currentVersion: string, channel: Pac
   const signatureResponse = await updateFeedGet(signatureUrl, signal)
   if (!signatureResponse) throw new Error("Update signature is missing")
   const signature = await updateFeedReadBounded(signatureResponse, SIGNATURE_BYTES)
-  const manifest = verifySignedWindowsUpdateManifest(bytes, signature, updatePublicKeys, currentVersion, channel, channel)
+  // "0.0.0" отключает сравнение версий внутри верификатора: подпись, канал и
+  // артефакты проверяются здесь, а «новее ли это» решает isNewerRelease. Иначе
+  // равная версия падала бы как ошибка, хотя обновления просто нет.
+  const manifest = verifySignedWindowsUpdateManifest(bytes, signature, updatePublicKeys, "0.0.0", channel, channel)
+  if (!isNewerRelease(manifest.version, currentVersion)) return null
   return { manifest, archiveUrl: `${base}/${manifest.artifact.file}` }
 }
