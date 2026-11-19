@@ -1,6 +1,7 @@
 // Проверки подсистемы: describe изолируют fixtures и хуки; runtime не подменяется общим состоянием.
 import assert from "node:assert/strict"
 import { createHash, generateKeyPairSync, sign } from "node:crypto"
+import { once } from "node:events"
 import { createWriteStream } from "node:fs"
 import { mkdir, readFile, rm, stat } from "node:fs/promises"
 import os from "node:os"
@@ -352,6 +353,7 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
     const dependencies = {
       "node:assert/strict": assert,
       "node:crypto": { createHash },
+      "node:events": { once },
       "node:fs": { createWriteStream },
       "node:fs/promises": { mkdir, rm, stat },
       "node:os": os,

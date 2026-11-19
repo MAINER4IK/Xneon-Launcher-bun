@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
+import { once } from "node:events"
 import { createWriteStream } from "node:fs"
 import { mkdir, rm, stat } from "node:fs/promises"
 import os from "node:os"
@@ -60,12 +61,9 @@ export async function downloadChannelInstaller(channel: PackageChannel): Promise
       size += chunk.value.length
       if (size > MAX_INSTALLER_BYTES) throw new Error("Installer is oversized")
       hash.update(chunk.value)
-      if (!sink.write(Buffer.from(chunk.value))) {
-        await new Promise<void>((resolve, reject) => {
-          sink.once("drain", resolve)
-          sink.once("error", reject)
-        })
-      }
+      // once() снимает обработчики после срабатывания: иначе каждая пауза на
+      // backpressure оставляла бы лишний error-listener на потоке.
+      if (!sink.write(Buffer.from(chunk.value))) await once(sink, "drain")
     }
   } finally {
     sink.end()
