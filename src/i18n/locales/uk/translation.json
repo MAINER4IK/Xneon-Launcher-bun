@@ -1,4 +1,11 @@
 {
+  "launcherUpdate.channelSwitchInfo": "Вибрати цю гілку оновлень? Це не почне завантаження й не перезапустить лаунчер. Потім натисніть «Перевірити» та «Завантажити».",
+  "launcherUpdate.channelSelected": "Гілку вибрано. Натисніть «Перевірити», щоб знайти оновлення.",
+  "launcherUpdate.restartTitle": "Оновлення готове",
+  "launcherUpdate.restartInfo": "Версію {{version}} завантажено. Перезапустити лаунчер зараз? Якщо вибрати «Пізніше», оновлення застосовується під час наступного запуску лаунчера.",
+  "launcherUpdate.restartNow": "Перезапустити зараз",
+  "launcherUpdate.later": "Пізніше",
+  "launcherUpdate.deferred": "Версію {{version}} буде встановлено під час наступного запуску лаунчера.",
   "worlds.datapack.installing": "Встановлення датапака",
   "worlds.datapack.installed": "Датапак встановлено",
   "worlds.datapack.failed": "Не вдалося встановити датапак",
