@@ -181,6 +181,27 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
   }
 
   describe("updater", () => {
+    test("выбор другой ветки не скачивает обновление, не закрывает БД и не запускает установщик", async () => {
+      const app = fixture({}, {}, "1.0.8")
+      const result = await app.changeChannel("beta")
+      assert.equal(result.state, "selected")
+      assert.equal(await app.getChannel(), "beta")
+      assert.equal(app.downloads.length, 0)
+      assert.equal(app.spawned.length, 0)
+      assert.equal(app.order.length, 0)
+      assert.equal(app.gate.blocked, false)
+    })
+
+    test("скачивание другой ветки само по себе не перезапускает лаунчер", async () => {
+      const app = fixture({}, {}, "1.0.8")
+      await app.changeChannel("beta")
+      await app.check()
+      assert.equal((await app.download()).success, true)
+      assert.equal(app.spawned.length, 0)
+      assert.equal(app.order.length, 0)
+      assert.equal(app.events.at(-1).status, "downloaded")
+    })
+
     test("канал задаёт сборка; другая ветка ставится подписанным установщиком", async () => {
       const app = fixture()
       assert.equal(await app.getChannel(), "beta")
