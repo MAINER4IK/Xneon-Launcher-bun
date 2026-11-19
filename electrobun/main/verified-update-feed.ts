@@ -8,7 +8,11 @@ import { updatePublicKeys } from "./update-public-keys"
 export type UpdatePreference = "stable" | "beta"
 type PackageChannel = "stable" | "canary"
 type Manifest = ReturnType<typeof verifySignedWindowsUpdateManifest>
-export type VerifiedUpdate = { manifest: Manifest; archiveUrl: string }
+/**
+ * `installedChannel` — канал установленного пакета. Целевой релиз может быть из другого
+ * канала: пользователь явно выбирает Beta или возвращается на Stable.
+ */
+export type VerifiedUpdate = { manifest: Manifest; archiveUrl: string; installedChannel?: PackageChannel }
 const repository = "MAINER4IK/Xneon-Launcher-bun"
 const releaseList = `https://api.github.com/repos/${repository}/releases?per_page=30`
 const assetHosts = new Set(["release-assets.githubusercontent.com", "objects.githubusercontent.com"])
@@ -58,10 +62,7 @@ export function releaseChannelOf(version: string): PackageChannel {
   return /-(?:pre|beta)\d+$/.test(version) ? "canary" : "stable"
 }
 
-/** Пакет нельзя обновить в другой канал, поэтому stable игнорирует beta-настройку. */
-export function updatePreferenceFor(channel: PackageChannel, preference: UpdatePreference): UpdatePreference {
-  return channel === "canary" ? preference : "stable"
-}
+/** Явный выбор канала в настройках разрешает переход Stable ⇄ Beta. */
 
 export function selectUpdateTag(releases: unknown, current: string, preference: UpdatePreference) {
   if (!Array.isArray(releases)) throw new Error("Invalid GitHub release list")
@@ -79,21 +80,40 @@ export async function discoverVerifiedUpdate(current: string, channel: PackageCh
   if (Object.keys(updatePublicKeys).length === 0) throw new Error("Trusted update signing keys are not configured")
   const signal = AbortSignal.timeout(45_000)
   const releases = JSON.parse((await readBounded(await get(releaseList, false, signal), 2 * 1024 ** 2)).toString("utf8"))
-  const version = selectUpdateTag(releases, current, updatePreferenceFor(channel, preference))
+  const version = selectUpdateTag(releases, current, preference)
   if (!version) return null
-  // Подписанный манифест привязан к каналу установленного пакета, поэтому каналы не смешиваются:
-  // canary-сборка обновляется только из prerelease, stable — только из стабильного релиза.
-  if (releaseChannelOf(version) !== channel) return null
+  const targetChannel = releaseChannelOf(version)
+  // Манифест подписан каналом самого релиза: stable-пакет принимает canary-манифест
+  // только по явному выбору Beta, и наоборот — при возврате на Stable.
   const base = `https://github.com/${repository}/releases/download/v${version}/`
-  const name = `${channel}-win-x64-update-v2.json`
+  const name = `${targetChannel}-win-x64-update-v2.json`
   const [bytes, signature] = await Promise.all([
     get(base + name, true, signal).then(response => readBounded(response, 64 * 1024)),
     get(base + name + ".sig", true, signal).then(response => readBounded(response, 1024)),
   ])
   const manifest = verifySignedWindowsUpdateManifest(bytes, signature, updatePublicKeys,
-    current, channel, preference === "beta" ? "canary" : "stable")
+    current, targetChannel, targetChannel === "canary" || preference === "beta" ? "canary" : "stable")
   if (manifest.version !== version) throw new Error("Signed update version does not match the GitHub tag")
-  return { manifest, archiveUrl: base + manifest.artifact.file }
+  return { manifest, archiveUrl: base + manifest.artifact.file, installedChannel: channel }
+}
+
+/**
+ * Манифест для локального bridge SDK. Нативный апдейтер принимает только документ и
+ * артефакт своего канала, поэтому identity подписи (канал релиза) сохраняется отдельно,
+ * а SDK получает эквивалент с каналом установленного пакета.
+ */
+export function bridgeUpdateArtifact(update: VerifiedUpdate) {
+  const installedChannel = update.installedChannel ?? update.manifest.channel
+  const targetPrefix = `${update.manifest.channel}-win-x64-`
+  const file = `${installedChannel}-win-x64-${update.manifest.artifact.file.slice(targetPrefix.length)}`
+  return {
+    file,
+    manifest: {
+      ...update.manifest,
+      channel: installedChannel,
+      artifact: { ...update.manifest.artifact, file },
+    },
+  }
 }
 
 export async function stageVerifiedArchive(
@@ -139,13 +159,14 @@ export async function stageVerifiedArchive(
 export function serveVerifiedUpdate(update: VerifiedUpdate, file: string, baseUrl?: string) {
   const address = baseUrl ? new URL(baseUrl) : null
   const prefix = address?.pathname ?? "/" + randomBytes(24).toString("hex") + "/"
-  const { manifest } = update
+  const { manifest } = bridgeUpdateArtifact(update)
+  const manifestName = `${manifest.channel}-win-x64-update-v2.json`
   const server = Bun.serve({
     hostname: "127.0.0.1", port: address ? Number(address.port) : 0,
     fetch(request) {
       const url = new URL(request.url)
       if (request.method !== "GET") return new Response(null, { status: 405 })
-      if (url.pathname === prefix + `${manifest.channel}-win-x64-update-v2.json`) return Response.json(manifest)
+      if (url.pathname === prefix + manifestName) return Response.json(manifest)
       if (url.pathname === prefix + manifest.artifact.file) return new Response(Bun.file(file))
       return new Response(null, { status: 404 })
     },
