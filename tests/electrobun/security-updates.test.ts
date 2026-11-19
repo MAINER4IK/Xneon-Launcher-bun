@@ -195,6 +195,17 @@ import { ShutdownCoordinator } from "../../electrobun/platform/shutdown.ts"
   }
 
   describe("updater", () => {
+    test("состояние без обновления и NSIS другого канала не требуют SDK update directory", async () => {
+      const app = fixture({ appDataFolder: async () => { throw new Error("outside its managed update directory") } }, {}, "1.0.8")
+      assert.equal((await app.state()).status, "idle")
+      await app.changeChannel("beta")
+      await app.check()
+      assert.equal((await app.download()).success, true)
+      assert.equal((await app.defer()).success, true)
+      await app.install()
+      assert.equal(app.spawned.length, 1)
+    })
+
     test("выбор другой ветки не скачивает обновление, не закрывает БД и не запускает установщик", async () => {
       const app = fixture({}, {}, "1.0.8")
       const result = await app.changeChannel("beta")
