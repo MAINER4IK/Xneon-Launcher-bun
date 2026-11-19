@@ -4,7 +4,7 @@ import { createHash, generateKeyPairSync, sign } from "node:crypto"
 import { mkdir, mkdtemp, readdir, rm, readFile } from "node:fs/promises"
 import path from "node:path"
 import { describe, test } from "bun:test"
-import { releaseChannelOf, selectUpdateTag, serveVerifiedUpdate, stageVerifiedArchive, updatePreferenceFor } from "../../electrobun/main/verified-update-feed.ts"
+import { bridgeUpdateArtifact, releaseChannelOf, selectUpdateTag, serveVerifiedUpdate, stageVerifiedArchive } from "../../electrobun/main/verified-update-feed.ts"
 import { verifySignedWindowsUpdateManifest, verifyWindowsUpdateManifest } from "../../electrobun/main/verified-update-manifest.ts"
 import { appIdentifier } from "../../electrobun/main/app-identity.ts"
 import nodeTest from "node:test"
@@ -23,13 +23,20 @@ import { resolveUpdatePreference } from "../../electrobun/main/update-preference
       assert.equal(selectUpdateTag([{ ...releases[2], draft: true }], "1.0.8", "beta"), null)
     })
 
-    test("канал обновления задаёт сам релиз: без -pre только stable", () => {
+    test("канал обновления задаёт сам релиз, явный выбор разрешает переход", () => {
       assert.equal(releaseChannelOf("1.0.8"), "stable")
       assert.equal(releaseChannelOf("1.0.8-pre2"), "canary")
-      // Настройка beta не переключает stable-пакет на canary-манифест.
-      assert.equal(updatePreferenceFor("stable", "beta"), "stable")
-      assert.equal(updatePreferenceFor("canary", "beta"), "beta")
-      assert.equal(updatePreferenceFor("canary", "stable"), "stable")
+      // Подпись проверяется по каналу релиза, а SDK получает эквивалент канала установки.
+      const update = {
+        installedChannel: "stable",
+        manifest: { channel: "canary", hash: "h1", artifact: { file: "canary-win-x64-XneonLauncher-canary.tar.zst" } },
+      }
+      const bridge = bridgeUpdateArtifact(update)
+      assert.equal(bridge.file, "stable-win-x64-XneonLauncher-canary.tar.zst")
+      assert.equal(bridge.manifest.channel, "stable")
+      assert.equal(bridge.manifest.hash, "h1")
+      assert.equal(bridge.manifest.artifact.file, bridge.file)
+      assert.equal(bridgeUpdateArtifact({ manifest: update.manifest }).manifest.channel, "canary")
     })
 
     test("stage checks signed compressed bytes and the bridge serves only that file", async () => {

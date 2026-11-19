@@ -40,6 +40,10 @@ canary: SDK + portable). Linux/macOS не блокируют публикаци�
 и список `targets` в `scripts/ci-pipeline.ts`. Проверки `tests` и signing по-прежнему выполняются на Ubuntu.
 На PR и push main запускается один Linux job с quality/offline gates, бюджет — 15 минут.
 Формат `-preN` согласован с updater; stable-релиз не содержит canary-файлов и наоборот.
+Явный выбор Beta/Stable в настройках разрешает обновление между каналами: подпись проверяется
+по каналу самого релиза, а нативный SDK получает через локальный bridge эквивалентный манифест
+своего канала. Переход возможен только на более новую версию, поэтому после stable `1.0.9`
+следующая канареечная сборка — `1.0.10-pre1`, а не `1.0.9-pre2`.
 Ручной запуск (`workflow_dispatch`) собирает artifacts без публикации; на tag — публикует.
 Signing и публикация используют environment `pre2-signing`, PR не получает release secrets.
 Локальный Windows-прогон не доказывает запуск native Linux/macOS или удалённого Worker.

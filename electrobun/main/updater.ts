@@ -8,7 +8,7 @@ import { lstat, readFile, unlink } from "node:fs/promises"
 import path from "node:path"
 import { isPortable } from "./profile-path"
 import { verifiedUpdateBridgeUrl } from "./update-public-keys"
-import { discoverVerifiedUpdate, stageVerifiedArchive, serveVerifiedUpdate, type VerifiedUpdate } from "./verified-update-feed"
+import { bridgeUpdateArtifact, discoverVerifiedUpdate, stageVerifiedArchive, serveVerifiedUpdate, type VerifiedUpdate } from "./verified-update-feed"
 import { stopMcpConnections } from "./agent-mcp"
 import { xnConnectManager } from "./xn-connect-manager"
 import { isLaunchActive } from "./minecraft-core"
@@ -132,6 +132,7 @@ export function registerUpdater() {
         // SDK matches cached records by version/hash/filename, without the signed digest.
         await unlink(file).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") throw error })
         if (local.baseUrl !== verifiedUpdateBridgeUrl) throw new Error("Invalid native update feed identity.")
+        const bridgeArtifact = bridgeUpdateArtifact(update)
         const bridge = serveVerifiedUpdate(update, staged.file, local.baseUrl)
         try {
           const checked = await Updater.checkForUpdate()
@@ -146,7 +147,7 @@ export function registerUpdater() {
           const bytes = await readPreparedRecord(file)
           const record = JSON.parse(bytes.toString("utf8"))
           if (record.schema_version !== 2 || record.hash !== update.manifest.hash ||
-              record.version !== update.manifest.version || record.artifact_file !== update.manifest.artifact.file) {
+              record.version !== update.manifest.version || record.artifact_file !== bridgeArtifact.file) {
             throw new Error("Prepared update does not match the signed manifest.")
           }
           preparedRecord = { file, bytes }
