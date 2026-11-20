@@ -5,6 +5,7 @@ import { lockLauncherProfile } from "../platform/instance-lock"
 import { readLauncherArgs } from "../platform/launcher-args"
 import { cli, forwardCli, parseCliLaunch, startCliListener } from "./cli"
 import { getDefaultLauncherDataRoot, isPortable, launcherLocationConfig } from "./profile-path"
+import { assertLinuxCefRuntime } from "../platform/linux-cef"
 
 /**
  * Флаги WebView2, которые Electron-сборка выставляла через
@@ -91,6 +92,15 @@ async function start() {
       // Повреждённый кэш обновлений не должен мешать открыть рабочий лаунчер.
       console.error("[Updater] Could not inspect deferred update", error)
     }
+  }
+  if (!isPortable && (process.platform === "linux" && process.arch === "x64" || process.platform === "darwin" && process.arch === "arm64")) {
+    const { resumeUnixUpdates } = await import("./unix-update-lifecycle")
+    const { bundledWorker } = await import("../platform/resources")
+    if (await resumeUnixUpdates(bundledWorker("unix-update-helper"), () => quitNative(0))) return
+  }
+  if (process.platform === "linux") {
+    try { assertLinuxCefRuntime(path.dirname(process.execPath), path.basename(process.execPath)) }
+    catch (error) { console.error("[CEF] Runtime validation failed; WebKit fallback is disabled", error); process.exit(1) }
   }
   if (build) cli.enqueue(build, error => { if (error) console.error("[CLI]", error) })
   await import("./index")

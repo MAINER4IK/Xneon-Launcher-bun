@@ -23,18 +23,24 @@ test('описания релизов содержат Features, Bug Fixes и т
     assert.match(body, /### Bug Fixes/)
     assert.match(body, /img.shields.io/)
     assert.match(body, new RegExp(`releases/download/v${version}/`))
-    assert.doesNotMatch(body, /logo=apple|logo=linux|### macOS|### Linux/)
+    assert.match(body, /### macOS/)
+    assert.match(body, /### Linux/)
+    assert.match(body, /logo=apple/)
+    assert.match(body, /logo=linux/)
     assert.equal(body.includes(`xneon-launcher-${version}-win-x64.exe`), true, 'NSIS есть в обоих каналах')
+    assert.equal(body.includes(`xneon-launcher-${version}-mac-arm64.dmg`), true, 'DMG публикуется в обоих каналах')
     assert.ok(body.includes('portable.zip'))
   }
 })
 
-test('показываются только доступные загрузки Windows, служебные файлы свёрнуты, RED/GREEN не попадает в описание', async () => {
+test('показываются загрузки всех платформ, служебные файлы свёрнуты, RED/GREEN не попадает в описание', async () => {
   const { releaseNotes } = await import('../../scripts/release-notes.ts')
   const body = releaseNotes('1.0.9', ['fix: Исправление (GREEN)'])
   assert.ok(body.startsWith('## Downloads'))
   assert.ok(body.indexOf('### Windows') < body.indexOf('### Features'))
-  assert.doesNotMatch(body, /### macOS|### Linux/)
+  assert.ok(body.indexOf('### macOS') < body.indexOf('### Features'))
+  assert.ok(body.indexOf('### Linux') < body.indexOf('### Features'))
+  assert.equal((body.match(/### Windows/g) ?? []).length, 1)
   assert.ok(body.indexOf('-win-x64.exe)') < body.indexOf('-portable.zip)'))
   assert.ok(body.indexOf('<details>') > body.indexOf('### Bug Fixes'))
   assert.ok(body.indexOf('stable-win-x64-update-v2.json') > body.indexOf('<details>'))

@@ -63,7 +63,9 @@ test("SDK prepared-record должен совпадать с сохранённ�
   const root = await mkdtemp(path.join(os.tmpdir(), "xneon-deferred-"))
   try {
     const store = new UpdateStateStore(root, keys)
-    const manifest = { ...document, channel: "stable", version: "1.0.9", artifact: { ...document.artifact, file: "stable-win-x64-XneonLauncher.tar.zst" } }
+    const manifest = { ...document, channel: "stable", version: "1.0.9",
+      artifact: { ...document.artifact, file: "stable-win-x64-XneonLauncher.tar.zst" },
+      installer: { ...document.installer, file: "xneon-launcher-1.0.9-win-x64.exe" } }
     const bytes = Buffer.from(JSON.stringify(manifest))
     const signature = Buffer.from(JSON.stringify({ keyId: "fixture", signature: sign(null, bytes, privateKey).toString("base64") }))
     await store.stage("sdk", local, { manifest, manifestBytes: bytes, signatureBytes: signature, archiveUrl: "" })

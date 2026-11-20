@@ -33,13 +33,16 @@
 
 Три workflow: `.github/workflows/ci.yml` (только проверки на PR/main/dispatch),
 `release.yml` (stable, тег `v1.2.3`) и `pre-release.yml` (canary, тег `v1.2.3-pre1`).
-Каждый релизный пайплайн — `tests → build (matrix) → release` и собирает только свой канал.
-Временно обе релизные матрицы и публикация ограничены Windows x64 (стабильный и
-canary: NSIS + SDK + portable). Linux/macOS не блокируют публикацию и не включаются в описание загрузок.
-Их упаковка и проверки сохранены; для возврата нужно согласованно расширить обе матрицы
-и список `targets` в `scripts/ci-pipeline.ts`. Проверки `tests` и signing по-прежнему выполняются на Ubuntu.
+Каждый релизный пайплайн — `tests → {build, build-linux, build-macos} → release` и собирает только свой канал.
+Публикация обоих каналов включает Windows x64 (NSIS + SDK + portable), Linux x64
+(Setup.tar.gz + deb/rpm/pacman/AppImage/tar.xz) и macOS arm64 (DMG). Каждая платформа
+подписывает свой Manifest v1 отдельным каталогом, затем `release` сливает их в
+`update-verified` и проверяет объединённый allowlist. Список платформ —
+`scripts/release-targets.ts`; он обязан совпадать с job-ами обоих workflow.
+Проверки `tests` и signing по-прежнему выполняются на Ubuntu.
 На PR и push main запускается один Linux job с quality/offline gates, бюджет — 15 минут.
 Формат `-preN` согласован с updater; stable-релиз не содержит canary-файлов и наоборот.
+GUI/install E2E на Unix остаётся отдельной ручной проверкой (см. [unix-preflight.md](unix-preflight.md)); CI собирает и подписывает артефакты, но не доказывает установку и применение обновления.
 
 ## Обновления без локального bridge
 
@@ -59,10 +62,20 @@ canary: NSIS + SDK + portable). Linux/macOS не блокируют публик
 нужного канала (`shell.openExternal`) и требует установки другой сборки; установка in-app
 через подписанный installer-каталог — отдельная задача.
 
-Поток обновления внутри канала: наш Ed25519-ключ проверяет манифест
-`<base>/<channel>-win-x64-update-v2.json` и подпись `.sig` (`resolveVerifiedUpdate`),
-затем SDK выполняет `checkForUpdate → downloadUpdate → applyUpdate`. Никакого
-temp-staging и перепроекции канала архива (`projectVerifiedArchive`) больше нет.
+Поток обновления внутри канала: один Ed25519-ключ проверяет подписанный **Manifest v1**
+(`schemaVersion: 1`; одинаковые поля и подпись у Windows, Linux и macOS). Windows-клиент
+читает совместимый алиас `<base>/<channel>-win-x64-update-v2.json` и `.sig`
+(`resolveVerifiedUpdate`), Unix — канонический
+`<base>/<channel>-<platform>-<arch>-update.json` и `.sig`. Оба имени публикуются
+байт-идентичными. Дальше Windows SDK выполняет `checkForUpdate → downloadUpdate →
+applyUpdate` с NSIS, а Unix — transactional helper с проверкой SHA-256, staging,
+атомарной подменой и health-подтверждением. Автоматического отката нет: при сбое helper
+останавливает новый процесс и фиксирует `failed`, а `previous`/`profile-backup`
+остаются для ручного восстановления. Формат манифеста един, реализации установки —
+платформенные.
+Signer `scripts/sign-update-feed.ts` и проверка `scripts/verify-signed-update-feed.ts`
+общие для всех платформ; публикация Unix пока закрыта до реального E2E.
+Никакого temp-staging и перепроекции канала архива (`projectVerifiedArchive`) больше нет.
 Отсутствующий манифест (404) трактуется как «обновлений нет», поэтому каналу не нужен
 публичный релиз для работы. Переход возможен только на более новую версию, поэтому после
 stable `1.0.9` следующая канареечная сборка — `1.0.10-pre1`, а не `1.0.9-pre2`.
