@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
 import { lstat, mkdir, open, readFile, rm, symlink } from "node:fs/promises"
 import path from "node:path"
+import { createZstdDecompress } from "node:zlib"
 import type { UnixUpdateManifest } from "./update-manifest"
 import { UPDATE_MAX_BYTES } from "./update-manifest"
 import { syncUnixUpdateDirectory } from "./unix-update-transaction"
@@ -116,22 +117,31 @@ export function inspectUnixUpdateTar(tar: Buffer, root: string): Entry[] {
   return entries
 }
 
-/** Проверяем declared output size всех Zstd frames до выделения распакованного буфера. */
+/**
+ * Проверяет структуру всех Zstd frames и объявленный Content Size, если он есть.
+ * Hutch 0.30 пишет потоковый кадр (fcs_flag=0) и размер не объявляет, поэтому
+ * фактический размер проверяет `decompressUnixUpdateArchive`: выход ограничен
+ * подписанным `tarSize` и обязан с ним совпасть.
+ */
 export function assertZstdSize(bytes: Buffer, expected: number) {
-  let cursor = 0, total = 0n, frames = 0
+  let cursor = 0, declared = 0n, frames = 0, complete = true
   while (cursor < bytes.length) {
     assert.ok(cursor + 5 <= bytes.length && bytes.readUInt32LE(cursor) === 0xfd2fb528 && ++frames <= 1024, "Invalid Zstd frame")
     cursor += 4
     const descriptor = bytes[cursor++], single = !!(descriptor & 32), flag = descriptor >>> 6
     assert.ok(!(descriptor & 24), "Unsupported Zstd frame flags")
-    if (!single) cursor++
+    if (!single) { assert.ok(cursor < bytes.length, "Truncated Zstd frame header"); cursor++ }
     const dictionarySize = [0, 1, 2, 4][descriptor & 3]
     assert.ok(dictionarySize === 0, "Zstd dictionary updates are unsupported")
     const sizeBytes = flag === 0 ? single ? 1 : 0 : [0, 2, 4, 8][flag]
-    assert.ok(sizeBytes && cursor + sizeBytes <= bytes.length, "Zstd update must declare content size")
-    const size = sizeBytes === 8 ? bytes.readBigUInt64LE(cursor) : BigInt(bytes.readUIntLE(cursor, sizeBytes)) + (flag === 1 ? 256n : 0n)
-    total += size; cursor += sizeBytes
-    assert.ok(total <= BigInt(expected), "Zstd output exceeds signed tar size")
+    if (!sizeBytes) complete = false
+    else {
+      assert.ok(cursor + sizeBytes <= bytes.length, "Truncated Zstd content size")
+      const size = sizeBytes === 8 ? bytes.readBigUInt64LE(cursor) : BigInt(bytes.readUIntLE(cursor, sizeBytes)) + (flag === 1 ? 256n : 0n)
+      declared += size
+      assert.ok(declared <= BigInt(expected), "Zstd output exceeds signed tar size")
+      cursor += sizeBytes
+    }
     let last = false
     while (!last) {
       assert.ok(cursor + 3 <= bytes.length, "Truncated Zstd block")
@@ -145,7 +155,39 @@ export function assertZstdSize(bytes: Buffer, expected: number) {
     if (descriptor & 4) cursor += 4
     assert.ok(cursor <= bytes.length, "Truncated Zstd checksum")
   }
-  assert.equal(total, BigInt(expected), "Zstd content size differs from signed tar size")
+  assert.ok(frames > 0, "Empty Zstd update")
+  if (complete) assert.equal(declared, BigInt(expected), "Zstd content size differs from signed tar size")
+}
+
+/**
+ * Распаковывает Zstd-архив в буфер, ограниченный подписанным `tarSize`.
+ * Потоковый кадр без Content Size распаковывается стримом, поэтому архив,
+ * который разворачивается больше подписанного размера, отвергается, не успев
+ * выделить лишнюю память; итоговая длина обязана совпасть с `tarSize`.
+ */
+export async function decompressUnixUpdateArchive(bytes: Buffer, expected: number, signal?: AbortSignal) {
+  assert.ok(Number.isSafeInteger(expected) && expected > 0 && expected <= UPDATE_MAX_BYTES, "Invalid signed tar size")
+  signal?.throwIfAborted()
+  assertZstdSize(bytes, expected)
+  const tar = Buffer.allocUnsafe(expected)
+  let written = 0
+  const stream = createZstdDecompress()
+  const onAbort = () => stream.destroy(new Error("Update archive extraction aborted"))
+  signal?.addEventListener("abort", onAbort, { once: true })
+  try {
+    await new Promise<void>((resolve, reject) => {
+      stream.on("data", (chunk: Buffer) => {
+        if (written + chunk.length > expected) { stream.destroy(new Error("Zstd output exceeds signed tar size")); return }
+        chunk.copy(tar, written); written += chunk.length
+      })
+      stream.once("error", reject)
+      stream.once("end", resolve)
+      stream.end(bytes)
+    })
+  } finally { signal?.removeEventListener("abort", onAbort) }
+  signal?.throwIfAborted()
+  assert.equal(written, expected, "Update tar size mismatch")
+  return tar
 }
 
 export async function extractUnixUpdateArchive(source: string, destination: string, root: string,
@@ -159,9 +201,7 @@ export async function extractUnixUpdateArchive(source: string, destination: stri
   assert.equal(compressed.length, artifact.downloadSize, "Update archive size mismatch")
   assert.equal(sha(compressed), artifact.downloadSha256, "Update archive SHA-256 mismatch")
   assert.ok(Number.isSafeInteger(artifact.tarSize) && artifact.tarSize > 0 && artifact.tarSize <= UPDATE_MAX_BYTES)
-  assertZstdSize(compressed, artifact.tarSize)
-  const tar = Buffer.from(Bun.zstdDecompressSync(compressed))
-  assert.equal(tar.length, artifact.tarSize, "Update tar size mismatch")
+  const tar = await decompressUnixUpdateArchive(compressed, artifact.tarSize, signal)
   assert.equal(sha(tar), artifact.tarSha256, "Update tar SHA-256 mismatch")
   const entries = inspectUnixUpdateTar(tar, root)
   signal?.throwIfAborted()

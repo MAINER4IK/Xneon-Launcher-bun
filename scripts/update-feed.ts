@@ -5,7 +5,7 @@ import { copyFile, lstat, mkdir, readFile, readdir, stat, writeFile } from "node
 import path from "node:path"
 import { appIdentifier } from "../electrobun/main/app-identity"
 import { updatePublicKeys } from "../electrobun/main/update-public-keys"
-import { inspectUnixUpdateTar, assertZstdSize } from "../electrobun/main/unix-update-archive"
+import { inspectUnixUpdateTar, decompressUnixUpdateArchive } from "../electrobun/main/unix-update-archive"
 import {
   UPDATE_MAX_BYTES, UPDATE_INSTALLER_MAX_BYTES, compatibilityManifestFileName, manifestFileName, nativeArchiveName,
   nativeBundleRoot, unixDistributionName, unixDistributions, updateInstallerName, verifySignedUpdateManifest,
@@ -24,14 +24,15 @@ async function bounded(file: string, maximum = UPDATE_MAX_BYTES) {
   return bytes
 }
 
-function checkNativeArchive(compressed: Buffer, manifest: UpdateManifest) {
+async function checkNativeArchive(compressed: Buffer, manifest: UpdateManifest) {
   assert.equal(compressed.length, manifest.artifact.downloadSize)
   assert.equal(sha(compressed), manifest.artifact.downloadSha256)
-  // Unix updater распаковывает архив в память и обязан заранее знать размер.
-  // Native Windows frame от Hutch не объявляет content size; там длина и SHA-256
-  // всё равно проверяются по распакованным байтам ниже.
-  if (manifest.platform !== "win") assertZstdSize(compressed, manifest.artifact.tarSize)
-  const tar = Buffer.from(Bun.zstdDecompressSync(compressed))
+  // Unix updater распаковывает архив в память. Hutch 0.30 пишет потоковый кадр
+  // без Content Size, поэтому подписанный tarSize проверяется по факту распаковки,
+  // а выход ограничен этим размером. Windows-путь не меняется.
+  const tar = manifest.platform === "win"
+    ? Buffer.from(Bun.zstdDecompressSync(compressed))
+    : await decompressUnixUpdateArchive(compressed, manifest.artifact.tarSize)
   assert.equal(tar.length, manifest.artifact.tarSize)
   assert.equal(sha(tar), manifest.artifact.tarSha256)
   const root = nativeBundleRoot(manifest)
@@ -91,7 +92,7 @@ export async function generateUpdateFeed(native: string, distributions: string |
     schemaVersion: 1, identifier: appIdentifier, ...target, version, hash: current.hash,
     artifact: { file: archive, downloadSize: bytes.length, downloadSha256: sha(bytes), tarSize: current.artifact.tarSize, tarSha256: current.artifact.tarSha256 },
   }
-  checkNativeArchive(bytes, manifest)
+  await checkNativeArchive(bytes, manifest)
 
   if (target.platform === "linux") {
     assert.ok(distributions, "Linux feed requires all native distribution formats")
@@ -180,7 +181,7 @@ export async function verifyUpdateFeed(directory: string, target: UpdateTarget, 
   const artifact = manifest.artifact
   const compressed = await bounded(path.join(directory, artifact.file))
   assert.ok(compressed.length === artifact.downloadSize && sha(compressed) === artifact.downloadSha256, "Update feed transport integrity mismatch")
-  checkNativeArchive(compressed, manifest)
+  await checkNativeArchive(compressed, manifest)
   for (const [format, file] of Object.entries(manifest.distributions ?? {}) as Array<[LinuxDistribution, UpdateFile]>) {
     const bytes = await bounded(path.join(directory, file.file))
     assert.ok(bytes.length === file.downloadSize && sha(bytes) === file.downloadSha256, "Update distribution transport integrity mismatch")

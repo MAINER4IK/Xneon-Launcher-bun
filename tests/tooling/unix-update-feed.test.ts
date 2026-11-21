@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import { createHash, generateKeyPairSync } from "node:crypto"
 import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises"
+import { createZstdCompress } from "node:zlib"
 import os from "node:os"
 import path from "node:path"
 import { generateUpdateFeed, signUpdateFeed, verifyUpdateFeed } from "../../scripts/update-feed"
@@ -13,6 +14,17 @@ const macTarget: UpdateTarget = { platform: "macos", arch: "arm64", channel: "st
 const linuxTarget: UpdateTarget = { platform: "linux", arch: "x64", channel: "stable" }
 const winTarget: UpdateTarget = { platform: "win", arch: "x64", channel: "stable" }
 const hash = (data: Buffer) => createHash("sha256").update(data).digest("hex")
+
+/** Потоковый кадр, как у Hutch 0.30: Content Size не объявлен. */
+async function streamingZstd(data: Buffer) {
+  const stream = createZstdCompress(), chunks: Buffer[] = []
+  stream.on("data", chunk => chunks.push(chunk))
+  const done = new Promise<void>((resolve, reject) => { stream.once("end", resolve); stream.once("error", reject) })
+  for (let offset = 0; offset < data.length; offset += 64 * 1024) stream.write(data.subarray(offset, offset + 64 * 1024))
+  stream.end()
+  await done
+  return Buffer.concat(chunks)
+}
 
 function tar(files: Array<[string, Buffer]>) {
   const blocks: Buffer[] = []
@@ -41,7 +53,7 @@ function keypair() {
   return { privateKey, keys: { fixture: publicKey.export({ format: "pem", type: "spki" }).toString() } }
 }
 
-async function nativeFixture(root: string, target: UpdateTarget, version: string) {
+async function nativeFixture(root: string, target: UpdateTarget, version: string, streaming = false) {
   const input = path.join(root, "native"); await mkdir(input, { recursive: true })
   const binary = nativeBinary(target.platform)
   const app = target.platform === "macos" ? "Xneon Launcher.app" : "XneonLauncher"
@@ -56,7 +68,7 @@ async function nativeFixture(root: string, target: UpdateTarget, version: string
   if (target.platform !== "win") entries.push([`${resources}/app/bun/workers/unix-update-helper.js`, Buffer.from("fixture-helper")])
   if (target.platform === "macos") entries.push([`${app}/Contents/Info.plist`, Buffer.from("<plist><dict><key>CFBundleIdentifier</key><string>org.xneon.launcher</string></dict></plist>")])
   const bytes = tar(entries), archive = nativeArchiveName(target)
-  await writeFile(path.join(input, archive), Bun.zstdCompressSync(bytes))
+  await writeFile(path.join(input, archive), streaming ? await streamingZstd(bytes) : Bun.zstdCompressSync(bytes))
   await writeFile(path.join(input, compatibilityManifestFileName(target)),
     JSON.stringify({ ...local, artifact: { file: archive, tarSize: bytes.length, tarSha256: hash(bytes) } }))
   if (target.platform === "win") await writeFile(path.join(input, `xneon-launcher-${version}-win-x64.exe`), Buffer.alloc(1024 ** 2 + 16))
@@ -74,10 +86,10 @@ async function nativeFixture(root: string, target: UpdateTarget, version: string
   return { input, packages }
 }
 
-async function fixture<T>(target: UpdateTarget, version: string, action: (root: string, input: string, packages: string | undefined) => Promise<T>): Promise<T> {
+async function fixture<T>(target: UpdateTarget, version: string, action: (root: string, input: string, packages: string | undefined) => Promise<T>, streaming = false): Promise<T> {
   const root = await mkdtemp(path.join(os.tmpdir(), "xneon-feed-"))
   try {
-    const { input, packages } = await nativeFixture(root, target, version)
+    const { input, packages } = await nativeFixture(root, target, version, streaming)
     return await action(root, input, packages)
   } finally { await rm(root, { recursive: true, force: true }) }
 }
@@ -109,6 +121,23 @@ test("Manifest v1 Windows: установщик входит в подпись, 
   await writeFile(path.join(output, signed.installer!.file), Buffer.alloc(1024 ** 2 + 16, 1))
   await expect(verifyUpdateFeed(output, winTarget, "1.0.8", keys)).rejects.toThrow()
 }))
+
+test("Manifest v1 Linux: потоковый кадр Hutch без Content Size подписывается и проверяется", async () => await fixture(linuxTarget, "1.0.8", async (root, input, packages) => {
+  const archive = await readFile(path.join(input, nativeArchiveName(linuxTarget)))
+  expect(archive[4] >> 6).toBe(0)
+  const { privateKey, keys } = keypair(), output = path.join(root, "signed")
+  await signUpdateFeed(input, packages, output, linuxTarget, "1.0.8", "fixture", privateKey, keys)
+  const verified = await verifyUpdateFeed(output, linuxTarget, "1.0.8", keys)
+  expect(verified.manifest.artifact.downloadSize).toBe(archive.length)
+  expect(verified.manifest.artifact.tarSize).toBeGreaterThan(0)
+}, true))
+
+test("потоковый архив, не совпадающий с подписанным tarSize, блокирует feed", async () => await fixture(linuxTarget, "1.0.8", async (_root, input, packages) => {
+  const file = path.join(input, compatibilityManifestFileName(linuxTarget))
+  const local = JSON.parse(await readFile(file, "utf8"))
+  await writeFile(file, JSON.stringify({ ...local, artifact: { ...local.artifact, tarSize: local.artifact.tarSize + 512 } }))
+  await expect(generateUpdateFeed(input, packages, linuxTarget, "1.0.8")).rejects.toThrow()
+}, true))
 
 test("Manifest v1 Linux: пять distributions связаны с подписью", async () => await fixture(linuxTarget, "1.0.8", async (root, input, packages) => {
   const { privateKey, keys } = keypair(), output = path.join(root, "signed")
