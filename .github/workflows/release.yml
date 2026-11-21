@@ -314,9 +314,9 @@ jobs:
           XNLC_UPDATE_KEY_ID: ${{ vars.XNLC_UPDATE_KEY_ID }}
         run: |
           set -euo pipefail
-          bun scripts/sign-update-feed.ts stable release-candidates/native-win-x64-stable signed-win
-          bun scripts/sign-update-feed.ts stable release-candidates/native-linux-x64-stable signed-linux release-candidates/native-linux-x64-packages
-          bun scripts/sign-update-feed.ts stable release-candidates/native-macos-arm64-stable signed-macos
+          bun scripts/sign-update-feed.ts stable release-candidates/native-win-x64-stable signed-win win x64
+          bun scripts/sign-update-feed.ts stable release-candidates/native-linux-x64-stable signed-linux linux x64 release-candidates/native-linux-x64-packages
+          bun scripts/sign-update-feed.ts stable release-candidates/native-macos-arm64-stable signed-macos macos arm64
           mkdir release-candidates/update-verified
           # Подписанные каталоги не пересекаются по именам: каждый target даёт свои
           # манифесты, архив и (для Linux) системные пакеты.

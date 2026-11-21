@@ -81,7 +81,9 @@ for (const [workflow, channel] of [[release, 'stable'], [prerelease, 'canary']])
   for (const target of ['win-x64', 'linux-x64', 'macos-arm64']) {
     assert.ok(sign.run.includes(`native-${target}-${channel} signed-`), 'Missing signing command for ' + target)
   }
-  assert.ok(sign.run.includes(`native-linux-x64-${channel} signed-linux release-candidates/native-linux-x64-packages`), 'Linux signing consumes distributions')
+  assert.ok(sign.run.includes(`native-linux-x64-${channel} signed-linux linux x64 release-candidates/native-linux-x64-packages`), 'Linux signing consumes distributions')
+  assert.ok(sign.run.includes(`native-win-x64-${channel} signed-win win x64`), 'Windows signing declares its target')
+  assert.ok(sign.run.includes(`native-macos-arm64-${channel} signed-macos macos arm64`), 'macOS signing declares its target')
 }
 assert.ok(!source['release.yml'].includes('canary-'), 'Stable pipeline never mentions canary artifacts')
 assert.ok(!source['pre-release.yml'].includes('stable-'), 'Prerelease pipeline never mentions stable artifacts')
