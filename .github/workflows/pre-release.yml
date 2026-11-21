@@ -119,7 +119,7 @@ jobs:
         run: |
           set -euo pipefail
           bun test tests/electrobun/platform-desktop.test.ts tests/electrobun/platform-secrets.test.ts tests/electrobun/platform-unix.test.ts
-          bun test tests/tooling/electrobun-packaging.test.mjs --test-name-pattern 'PE metadata'
+          bun test tests/tooling/release-artifacts.test.mjs --test-name-pattern 'PE metadata'
       - name: Validate Windows payload and staging
         run: bun scripts/validate-pre-release.ts release-electrobun/canary checked-native canary
       - name: Build and validate independent Portable profile
@@ -170,7 +170,7 @@ jobs:
       - name: Build canary Linux candidate
         run: bun run build:canary
       - name: Run headless Linux updater integration and filesystem tests
-        run: bun test tests/electrobun/unix*.test.ts tests/tooling/unix-update-helper.test.ts tests/tooling/unix-update-feed.test.ts
+        run: bun test tests/electrobun/unix-update-*.test.ts tests/electrobun/update-*.test.ts tests/tooling/unix-package-build.test.ts tests/tooling/release-artifacts.test.mjs
       - name: Validate native artifacts and exact archive identity
         run: bun scripts/electrobun-artifacts.ts stage "release-electrobun/$CHANNEL" checked-unix "$TARGET_PLATFORM" "$TARGET_ARCH" "$CHANNEL"
       - name: Validate Linux CEF runtime and ABI
@@ -232,7 +232,7 @@ jobs:
       - name: Build canary macOS candidate
         run: bun run build:canary
       - name: Run native macOS updater unit and filesystem tests (not update E2E)
-        run: bun test tests/electrobun/unix*.test.ts tests/tooling/unix-update-helper.test.ts tests/tooling/unix-update-feed.test.ts
+        run: bun test tests/electrobun/unix-update-*.test.ts tests/electrobun/update-*.test.ts tests/tooling/unix-package-build.test.ts tests/tooling/release-artifacts.test.mjs
       - name: Validate macOS artifacts and exact archive identity
         run: bun scripts/electrobun-artifacts.ts stage "release-electrobun/$CHANNEL" checked-unix "$TARGET_PLATFORM" "$TARGET_ARCH" "$CHANNEL"
       - name: Validate macOS payload and prepare DMG and ZIP

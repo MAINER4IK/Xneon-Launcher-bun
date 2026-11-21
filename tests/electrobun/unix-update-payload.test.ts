@@ -23,9 +23,11 @@ test("payload проверяет local identity, оба Mach-O и plist identifi
   await verifyUnixUpdatePayload(root, expected, plist)
   await expect(verifyUnixUpdatePayload(root, expected, async () => "other.app")).rejects.toThrow()
 }))
-for (const key of ["identifier", "version", "channel", "hash"]) test(`неверная bundled identity: ${key}`, () => fixture(async (root, expected) => {
-  await writeFile(path.join(root, "Contents/Resources/version.json"), JSON.stringify({ ...identity, [key]: "other" }))
-  await expect(verifyUnixUpdatePayload(root, expected, plist)).rejects.toThrow()
+test("неверная bundled identity не проходит проверку payload", () => fixture(async (root, expected) => {
+  for (const key of ["identifier", "version", "channel", "hash"]) {
+    await writeFile(path.join(root, "Contents/Resources/version.json"), JSON.stringify({ ...identity, [key]: "other" }))
+    await expect(verifyUnixUpdatePayload(root, expected, plist), key).rejects.toThrow()
+  }
 }))
 test("не тот Mach-O и ELF library не могут попасть в macOS payload", () => fixture(async (root, expected) => {
   const binary = Buffer.alloc(64); binary.writeUInt32LE(0xfeedfacf); binary.writeUInt32LE(0x01000007, 4)

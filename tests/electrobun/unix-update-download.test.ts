@@ -21,22 +21,23 @@ test("скачивание проверяет bytes перед публикац�
   expect(await readdir(result.directory)).toEqual([file.file])
 }))
 
-for (const kind of ["hash", "short", "long", "interrupted", "cancelled", "disk-full", "permissions"] as const) {
-  test(`неудачная загрузка очищает только свой staging: ${kind}`, () => fixture(async directory => {
-    const controller = new AbortController()
-    const request = async () => {
-      if (kind === "cancelled") controller.abort()
-      if (kind === "disk-full" || kind === "permissions") throw Object.assign(new Error(kind), { code: kind === "disk-full" ? "ENOSPC" : "EACCES" })
-      if (kind === "interrupted") return new Response(new ReadableStream({ start(stream) { stream.enqueue(bytes.subarray(0, 3)); stream.error(new Error("Connection interrupted")) } }))
-      return new Response(kind === "hash" ? Buffer.alloc(bytes.length) : kind === "short" ? bytes.subarray(0, 3) : kind === "long" ? Buffer.concat([bytes, bytes]) : bytes)
-    }
-    await expect(downloadUnixUpdateFile(base, file, directory, { request, signal: controller.signal })).rejects.toThrow()
-    expect(await readdir(directory)).toEqual([])
-    // После ошибки повторная попытка не использует прежний неполный файл.
-    const result = await downloadUnixUpdateFile(base, file, directory, { request: async () => new Response(bytes) })
-    expect(await readFile(result.path)).toEqual(bytes)
-  }))
-}
+test("неудачная загрузка очищает только свой staging, а повторная попытка не использует неполный файл", async () => {
+  for (const kind of ["hash", "short", "long", "interrupted", "cancelled", "disk-full", "permissions"] as const) {
+    await fixture(async directory => {
+      const controller = new AbortController()
+      const request = async () => {
+        if (kind === "cancelled") controller.abort()
+        if (kind === "disk-full" || kind === "permissions") throw Object.assign(new Error(kind), { code: kind === "disk-full" ? "ENOSPC" : "EACCES" })
+        if (kind === "interrupted") return new Response(new ReadableStream({ start(stream) { stream.enqueue(bytes.subarray(0, 3)); stream.error(new Error("Connection interrupted")) } }))
+        return new Response(kind === "hash" ? Buffer.alloc(bytes.length) : kind === "short" ? bytes.subarray(0, 3) : kind === "long" ? Buffer.concat([bytes, bytes]) : bytes)
+      }
+      await expect(downloadUnixUpdateFile(base, file, directory, { request, signal: controller.signal }), kind).rejects.toThrow()
+      expect(await readdir(directory)).toEqual([])
+      const result = await downloadUnixUpdateFile(base, file, directory, { request: async () => new Response(bytes) })
+      expect(await readFile(result.path)).toEqual(bytes)
+    })
+  }
+})
 
 test("HTTP и небезопасное имя отклоняются до сети и записи", () => fixture(async directory => {
   let requests = 0
@@ -49,11 +50,14 @@ test("HTTP и небезопасное имя отклоняются до сет
   expect(await readdir(directory)).toEqual([])
 }))
 
-test("скачивание принимает только точный origin канала, а не произвольный URL или подкаталог", () => fixture(async directory => {
-  for (const invalid of [base + "/other", base + "?q=x", base.replace("github.com", "evil.invalid"), base.replace("latest/download", "download/v1.0.8")]) {
+test("разрешён только официальный base URL канала, не historical tag или подкаталог", () => fixture(async directory => {
+  const result = await downloadUnixUpdateFile(base, file, directory, { request: async () => new Response(bytes) })
+  expect(await readFile(result.path)).toEqual(bytes)
+  await rm(result.directory, { recursive: true, force: true })
+  const historical = base.replace("latest/download", "download/v1.0.8")
+  for (const invalid of [historical, historical + "/other", base + "/other", base + "?q=x", base.replace("github.com", "evil.invalid")]) {
     await expect(downloadUnixUpdateFile(invalid, file, directory, { request: async () => { throw new Error("Must reject before network") } })).rejects.toThrow(/origin/)
   }
-  expect(await readdir(directory)).toEqual([])
 }))
 
 test("отмена закрывает даже зависший reader, не ожидая следующего network chunk", () => fixture(async directory => {

@@ -16,10 +16,12 @@ test("AppImage определяется только по согласованн
   await expect(detectUnixInstallation(context, probe({ header: async () => Buffer.alloc(64) }))).rejects.toThrow()
   await expect(detectUnixInstallation(context, probe({ writable: async () => false }))).rejects.toThrow(/update-no-permission/)
 })
-for (const kind of ["deb", "rpm", "pacman"] as const) test(`владение файлом определяет системный пакет: ${kind}`, async () => {
-  const installed = await detectUnixInstallation(linux, probe({ packageOwners: async () => [kind], writable: async () => false }))
-  expect(installed.kind).toBe(kind)
-  expect(installed.target).toBe("/opt/xneon-launcher")
+test("владение файлом определяет системный пакет deb/rpm/pacman, даже без права записи", async () => {
+  for (const kind of ["deb", "rpm", "pacman"] as const) {
+    const installed = await detectUnixInstallation(linux, probe({ packageOwners: async () => [kind], writable: async () => false }))
+    expect(installed.kind).toBe(kind)
+    expect(installed.target).toBe("/opt/xneon-launcher")
+  }
 })
 test("несколько владельцев и чужая bundled identity не допускаются", async () => {
   await expect(detectUnixInstallation(linux, probe({ packageOwners: async () => ["deb", "rpm"] }))).rejects.toThrow()
