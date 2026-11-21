@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { fetchModdexReviews } from "../../electrobun/main/moddex-reviews"
+import { fetchModdexReviews, MODDEX_REVIEWS_UNAVAILABLE } from "../../electrobun/main/moddex-reviews"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
@@ -65,9 +65,49 @@ describe("ModDex reviews", () => {
     expect(result.writeUrl).toBe("https://moddex.gg")
   })
   test("rejects a response whose data is not an array", async () => {
-    expect(fetchModdexReviews("fabric-api", 1, async () => new Response(JSON.stringify({
+    await expect(fetchModdexReviews("fabric-api", 1, async () => new Response(JSON.stringify({
       data: { reviews: [] },
       meta: { project: { rating: { average: 4, count: 1 } } },
-    })))).rejects.toThrow("Invalid ModDex response")
+    })))).rejects.toThrow(MODDEX_REVIEWS_UNAVAILABLE)
+  })
+  test("returns paging, counts and the ModDex write URL", async () => {
+    const result = await fetchModdexReviews("fabric-api", 2, async () => new Response(JSON.stringify({
+      data: [], meta: { current_page: 2, last_page: 5, project: { rating: { average: 4.5, count: 12 }, links: { write_review: "https://moddex.gg/project/example/review" } } },
+    })), "newest")
+    expect(result.page).toBe(2)
+    expect(result.lastPage).toBe(5)
+    expect(result.average).toBe(4.5)
+    expect(result.count).toBe(12)
+    expect(result.writeUrl).toBe("https://moddex.gg/project/example/review")
+  })
+  test("rejects structurally damaged payloads as reviews-unavailable", async () => {
+    const broken: unknown[] = [null, [], "text", { data: null }, { data: {} }, { data: [null] }, { data: ["text"] }, { data: [42] }]
+    for (const body of broken) {
+      await expect(fetchModdexReviews("fabric-api", 1, async () => new Response(JSON.stringify(body)))).rejects.toThrow(MODDEX_REVIEWS_UNAVAILABLE)
+    }
+  })
+  test("treats unreadable JSON as reviews-unavailable", async () => {
+    await expect(fetchModdexReviews("fabric-api", 1, async () => new Response("{not json", { status: 200 }))).rejects.toThrow(MODDEX_REVIEWS_UNAVAILABLE)
+  })
+  test("keeps reviews when the ratings payload is damaged", async () => {
+    for (const details of [null, "text", { data: null }, { data: { ratings: "text" } }, { data: { ratings: { categories: [] } } }]) {
+      const result = await fetchModdexReviews("fabric-api", 1, async input => new Response(JSON.stringify(String(input).includes("/reviews")
+        ? { data: [{ id: 4, rating: 5, content: "Fine", author: { name: "Alex" } }], meta: { project: { rating: { average: 5, count: 1 } } } }
+        : details)))
+      expect(result.status).toBe("ok")
+      expect(result.reviews).toHaveLength(1)
+      expect(result.categories).toEqual({ gameplay: null, performance: null, aesthetics: null })
+    }
+  })
+  test("tolerates odd meta and rejects non-ModDex write URLs", async () => {
+    const result = await fetchModdexReviews("fabric-api", 1, async () => new Response(JSON.stringify({
+      data: [], meta: { current_page: "3", last_page: 0, project: { rating: "x", links: { write_review: "http://evil.example" } } },
+    })))
+    expect(result.status).toBe("ok")
+    expect(result.reviews).toEqual([])
+    expect(result.page).toBe(3)
+    expect(result.lastPage).toBe(1)
+    expect(result.average).toBeNull()
+    expect(result.writeUrl).toBe("https://moddex.gg")
   })
 })
