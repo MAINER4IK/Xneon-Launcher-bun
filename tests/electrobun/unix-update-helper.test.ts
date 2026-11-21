@@ -70,7 +70,7 @@ test("symlink вместо private root отвергается до копиро
 
 test("ready требует точного nonce/PID и живого helper, отмена не разрешает закрыть A", () => handoffFixture(async (profilePath, runtime, helper) => {
   const files = await prepareUnixHelperFiles(profilePath, nonce, runtime, helper, { nonce })
-  await writeFile(files.ready, JSON.stringify({ schemaVersion: 1, nonce, pid: 321 }))
+  await writeFile(files.ready, JSON.stringify({ schemaVersion: 1, nonce, pid: 321 }), { mode: 0o600 })
   expect(await waitForUnixHelperReady(files, 321, () => true)).toBeUndefined()
   await expect(waitForUnixHelperReady(files, 123, () => true)).rejects.toThrow()
   await expect(waitForUnixHelperReady(files, 321, () => false)).rejects.toThrow()
