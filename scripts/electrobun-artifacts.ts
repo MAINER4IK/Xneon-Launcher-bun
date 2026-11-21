@@ -36,7 +36,7 @@ function identity(options: Options) {
   return { version, app, prefix, installer, archive: `${prefix}-${app}${options.platform === "macos" ? ".app" : ""}.tar.zst`, nsis: `xneon-launcher-${version}-win-x64.exe` }
 }
 
-/** Имена штатного Hutch 0.29 / Electrobun 2.0; содержимое не переупаковывается. */
+/** Имена штатного Hutch 0.30 / Electrobun 2.0; содержимое не переупаковывается. */
 export function nativeArtifactNames(options: Options): string[] {
   const value = identity(options)
   return [`${value.prefix}-update.json`, `${value.prefix}-update-v2.json`, value.archive, value.installer, ...(options.nsis ? [value.nsis] : [])]
@@ -126,6 +126,9 @@ export async function inspectElectrobunRelease(directory: string, options: Optio
     for (const key of ["identifier", "version", "channel", "hash"]) assert.equal(local[key], current[key], "Unexpected bundled " + key)
     assert.equal(local.baseUrl, options.platform === "win" ? expectedUpdateBaseUrl(options.channel as "stable" | "canary") : "", "Unexpected native update feed")
     for (const executable of ["launcher", "bun"]) validateNativeExecutable(tar(tarFile, bin + executable + (options.platform === "win" ? ".exe" : "")), options.platform, options.arch)
+    // 2.0.7 ищет updater в native core рядом с launcher (updaterNative.ts: exeDir), без библиотеки обновление не стартует.
+    const core = options.platform === "win" ? "ElectrobunCore.dll" : "libElectrobunCore." + (options.platform === "macos" ? "dylib" : "so")
+    validateNativeExecutable(tar(tarFile, bin + core), options.platform, options.arch)
     const main = tar(tarFile, resources + "app/bun/index.js").toString()
     validateBundleCredentials(main)
     if (options.platform === "win") {

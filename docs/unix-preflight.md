@@ -15,9 +15,9 @@ Unix включён в автоматическую публикацию обо�
 - Linux: нативный `ubuntu-24.04` x64, существующая сборка Electrobun и упаковка
   AppImage/DEB/RPM/Pacman/TAR.XZ. SDK manifests и архив проверяет прежний validator.
   Подписанный feed собирается тем же единым Manifest v1 и signer, что у Windows.
-- CEF: реальные параметры Electrobun 2.0.6 — `build.linux.bundleCEF: true` и
+- CEF: реальные параметры Electrobun 2.0.7 — `build.linux.bundleCEF: true` и
   `defaultRenderer: "cef"`. Главное окно также явно выбирает `cef`.
-- Hutch закреплён на 0.30.0, Electrobun остаётся 2.0.6. Адаптер проверяет
+- Hutch закреплён на 0.30.0, Electrobun — на 2.0.7. Адаптер проверяет
   `checksum.json` по распакованному tar и добавляет совместимый `update-v2.json`;
   исходные archive/update/checksum bytes не меняются. Оба native-манифеста уже
   schemaVersion 1; публикуемый подписанный документ — тот же v1 под каноническим
@@ -53,7 +53,7 @@ CI доказывает сборку, целостность архива, фо�
 1. Платформенные updater-ы разные: Windows ставит подписанный NSIS через SDK,
    Unix — transactional helper. Общая у них только схема Manifest v1 и Ed25519,
    поэтому E2E нужен отдельно для каждой ОС.
-2. Linux-пакеты устанавливаются в `/opt/xneon-launcher`; Electrobun 2.0.6
+2. Linux-пакеты устанавливаются в `/opt/xneon-launcher`; Electrobun 2.0.7
    `resolveInstalledChannelRootForPlatform` отвергает обновление вне управляемого
    каталога. Для read-only AppImage проблема также не решена. Нужен отдельный
    проверенный контракт обновления системных пакетов, а не запись поверх `/opt`.

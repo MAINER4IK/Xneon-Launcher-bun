@@ -23,7 +23,7 @@ runs:
       run: |
         set -euo pipefail
         test "$(bun --version)" = 1.4.4
-        test "$(bun -p 'require("./package.json").devDependencies.electrobun')" = 2.0.6
+        test "$(bun -p 'require("./package.json").devDependencies.electrobun')" = 2.0.7
     - name: Install Hutch (Windows)
       if: inputs.desktop == 'true' && runner.os == 'Windows'
       shell: pwsh

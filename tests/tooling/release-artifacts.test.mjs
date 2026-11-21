@@ -53,6 +53,7 @@ function windowsNativeArchive(version, value, channel = 'stable') {
   const bytes = tarArchive([
     ['XneonLauncher/bin/bun.exe', pe],
     ['XneonLauncher/bin/launcher.exe', pe],
+    ['XneonLauncher/bin/ElectrobunCore.dll', pe],
     ['XneonLauncher/Resources/version.json', Buffer.from(JSON.stringify({ schemaVersion: 1, identifier: appIdentifier, channel, version, hash: value, platform: 'win', arch: 'x64' }))],
   ])
   return { compressed: Buffer.from(Bun.zstdCompressSync(bytes)), tarSize: bytes.length, tarSha256: hash(bytes) }
@@ -66,6 +67,7 @@ function unixNativeArchive(platform, arch, version, value, channel = 'stable') {
   const local = { schemaVersion: 1, identifier: appIdentifier, channel, version, hash: value, platform, arch }
   const entries = [
     [`${bin}/bun`, binary], [`${bin}/launcher`, binary],
+    [`${bin}/libElectrobunCore.${platform === 'macos' ? 'dylib' : 'so'}`, binary],
     [`${resources}/version.json`, Buffer.from(JSON.stringify(local))],
     [`${resources}/app/bun/workers/unix-update-helper.js`, Buffer.from('fixture-helper')],
   ]
@@ -89,7 +91,7 @@ function executable(platform, arch) {
   return bytes
 }
 
-async function packagingFixture(t, platform = 'win', arch = platform === 'macos' ? 'arm64' : 'x64') {
+async function packagingFixture(t, platform = 'win', arch = platform === 'macos' ? 'arm64' : 'x64', { core = true } = {}) {
   await fs.mkdir(path.join(root, '.tmp'), { recursive: true })
   const directory = await fs.mkdtemp(path.join(root, '.tmp/packaging-'))
   t.after(() => fs.rm(directory, { recursive: true, force: true }))
@@ -104,6 +106,7 @@ async function packagingFixture(t, platform = 'win', arch = platform === 'macos'
   const mainSource = `var cloudCredentials = {\n${creds}\n};\n` + Object.entries(updatePublicKeys).map(([key, pem]) => key + '\n' + pem.split('\n')[1]).join('\n') + '\nMAINER4IK/Xneon-Launcher-bun'
   await fs.writeFile(path.join(resources, 'app/bun/index.js'), mainSource)
   for (const file of ['launcher', 'bun']) await fs.writeFile(path.join(bin, file + (platform === 'win' ? '.exe' : '')), executable(platform, arch))
+  if (core) await fs.writeFile(path.join(bin, platform === 'win' ? 'ElectrobunCore.dll' : `libElectrobunCore.${platform === 'macos' ? 'dylib' : 'so'}`), executable(platform, arch))
   if (platform === 'win') await fs.writeFile(path.join(bin, 'bun.exe'), Buffer.concat([pe(), randomBytes(1024 ** 2 + 1024)]))
   await fs.writeFile(path.join(resources, 'uninstall'), 'native update manager')
   const tarFile = path.join(directory, 'payload.tar')
@@ -340,6 +343,9 @@ test('native release validation: байты, NSIS, checksums, traversal и delta
     assert.equal(checked.files.length, 4)
     assert.ok(checked.files.some(name => name.endsWith(platform === 'macos' ? '.dmg' : '-Setup.tar.gz')))
   }
+  // Без native core updater не загрузится (updaterNative.ts), такой payload не выпускается.
+  const withoutCore = await packagingFixture(t, 'win', 'x64', { core: false })
+  await assert.rejects(inspectElectrobunRelease(withoutCore.input, withoutCore.options), /ElectrobunCore/)
 })
 
 test('Bun обновляет реальные PE metadata, сохраняет иконки и отклоняет непригодный файл', { skip: process.platform !== 'win32' }, async t => {

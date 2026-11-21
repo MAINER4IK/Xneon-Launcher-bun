@@ -140,13 +140,29 @@ test("Windows SDK prepared-record должен совпадать с сохра�
   const bytes = Buffer.from(JSON.stringify(manifest))
   const signature = Buffer.from(JSON.stringify({ keyId: "fixture", signature: sign(null, bytes, privateKey).toString("base64") }))
   await store.stage("sdk", local, { manifest, manifestBytes: bytes, signatureBytes: signature, archiveUrl: "" })
-  const prepared = { ...manifest, artifact_file: manifest.artifact.file }
-  await writeFile(path.join(root, ".electrobun-prepared-update.json"), JSON.stringify(prepared))
+  const prepared = { schema_version: 2, ...manifest, artifact_file: manifest.artifact.file }
+  // SDK 2.0.7 пишет запись в self-extraction рядом с recipe.
+  const record = path.join(root, "self-extraction", ".electrobun-prepared-update.json")
+  await mkdir(path.dirname(record), { recursive: true })
+  await writeFile(record, JSON.stringify(prepared))
   assert.equal((await store.peek(local, async () => root))?.kind, "sdk")
   await store.defer(local, async () => root)
   assert.equal((await store.peek(local, root))?.deferred, true)
-  await writeFile(path.join(root, ".electrobun-prepared-update.json"), JSON.stringify({ ...prepared, hash: "other123" }))
+
+  // Подмена хеша в записи — расхождение с подписанным манифестом, а не отсутствие файла.
+  await writeFile(record, JSON.stringify({ ...prepared, hash: "other123" }))
   await assert.rejects(store.peek(local, root), /SDK prepared update/)
+  // Повреждённая запись не считается отсутствующей.
+  await writeFile(record, "{")
+  await assert.rejects(store.peek(local, root))
+  // Запись исчезла (очистка self-extraction): pending неприменим и снимается без ошибки.
+  await rm(record)
+  assert.equal(await store.peek(local, root), null)
+  assert.equal(await store.peek(local), null)
+
+  // Совпавшая с манифестом сборка тоже снимает pending.
+  await store.stage("sdk", local, { manifest, manifestBytes: bytes, signatureBytes: signature, archiveUrl: "" })
+  await writeFile(record, JSON.stringify(prepared))
   assert.equal(await store.peek({ channel: "stable", version: "1.0.9", hash: "new123" }, root), null)
   assert.equal(await store.peek(local), null)
 }))

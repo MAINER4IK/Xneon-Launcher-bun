@@ -31,6 +31,16 @@ export class UpdateStateStore {
     return JSON.parse(await readFile(file, "utf8"))
   }
 
+  /** Отсутствие записи — штатное состояние, повреждённая запись остаётся ошибкой. */
+  private async readPreparedRecord(file: string): Promise<Record<string, unknown> | null> {
+    try {
+      return await this.readJson(file, 64 * 1024) as Record<string, unknown>
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null
+      throw error
+    }
+  }
+
   private async read(): Promise<UpdateState> {
     try {
       const value = await this.readJson(path.join(this.directory, "state.json"), 128 * 1024) as UpdateState
@@ -111,7 +121,11 @@ export class UpdateStateStore {
     if (saved.kind === "installer") file = await this.verifyInstaller(update)
     else if (sdkRoot) {
       const directory = typeof sdkRoot === "function" ? await sdkRoot() : sdkRoot
-      const prepared = await this.readJson(path.join(directory, ".electrobun-prepared-update.json"), 64 * 1024) as Record<string, unknown>
+      // SDK 2.0.7 публикует запись в своём каталоге self-extraction рядом с recipe.
+      const prepared = await this.readPreparedRecord(path.join(directory, "self-extraction", ".electrobun-prepared-update.json"))
+      // Запись могла исчезнуть (очистка self-extraction, прежняя версия SDK): pending без неё
+      // неприменим, поэтому снимаем его, чтобы UI не зацикливался на «скачано».
+      if (!prepared) { await this.clearPending(); return null }
       for (const key of ["identifier", "channel", "version", "hash", "platform", "arch"] as const) {
         assert.equal(prepared[key], update.manifest[key], "SDK prepared update differs from signed manifest")
       }

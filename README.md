@@ -100,7 +100,7 @@
 
 ## Быстрый старт
 
-Добавьте **Bun 1.4.4** и **Hutch 0.29.0** в PATH. Для стандартной Windows-сборки Electrobun нужны Windows PowerShell и 64-битный компилятор C# из .NET Framework 4.x; для дополнительного Windows-установщика — **NSIS 3** (`makensis` или `XNEON_MAKENSIS`). Приложение использует WebView2.
+Добавьте **Bun 1.4.4** и **Hutch 0.30.0** в PATH. Для стандартной Windows-сборки Electrobun нужны Windows PowerShell и 64-битный компилятор C# из .NET Framework 4.x; для дополнительного Windows-установщика — **NSIS 3** (`makensis` или `XNEON_MAKENSIS`). Приложение использует WebView2.
 
 ```bash
 # Установка зависимостей

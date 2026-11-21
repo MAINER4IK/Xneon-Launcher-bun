@@ -1,6 +1,6 @@
 # Native production builds
 
-Проект использует Bun **1.4.4**, Hutch **0.29.0**, Electrobun **2.0.6**, React 19.
+Проект использует Bun **1.4.4**, Hutch **0.30.0**, Electrobun **2.0.7**, React 19.
 Сборка выполняется на целевой ОС/архитектуре: renderer/typecheck не заменяют native build.
 
 | Цель | Предпосылки / статус конфигурации |
