@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, readlink } from "node:fs/promises"
+import { mkdtemp, mkdir, writeFile, readFile, realpath, rm, symlink, readlink } from "node:fs/promises"
 import fs from "node:fs"
 import path from "node:path"
 import { tmpdir } from "node:os"
@@ -16,7 +16,7 @@ const elf64 = () => {
 }
 
 test("Linux CEF payload принимает SDK runtime и отвергает неполный или чужой ABI", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "xneon-cef-test-"))
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), "xneon-cef-test-")))
   try {
     await mkdir(path.join(root, "bin/locales"), { recursive: true })
     const elf = elf64()
@@ -38,7 +38,7 @@ test("Linux CEF payload принимает SDK runtime и отвергает н�
     await expect(validateCefPayload(root)).rejects.toThrow("Invalid Linux ELF architecture")
   } finally { await rm(root, { recursive: true, force: true }) }
 
-  const incomplete = await mkdtemp(path.join(tmpdir(), "xneon-cef-test-"))
+  const incomplete = await realpath(await mkdtemp(path.join(tmpdir(), "xneon-cef-test-")))
   try {
     await mkdir(path.join(incomplete, "bin"))
     await expect(validateCefPayload(incomplete)).rejects.toThrow()
