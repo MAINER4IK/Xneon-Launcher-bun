@@ -11,6 +11,8 @@ import { copyFile, cp, lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, wr
 import path from "node:path"
 import packageJson from "../package.json"
 import { checksumText } from "./artifact-checksums"
+import { linuxPackageVersion } from "../electrobun/main/unix-package-version"
+import { appIdentifier } from "../electrobun/main/app-identity"
 
 const maintainer = "XNeon Launcher <support@xneon.org>"
 const desktopName = "xneon-launcher"
@@ -90,13 +92,13 @@ exec "$HERE/${installRoot}/bin/launcher" "$@"
 `
 
 /** Раскладывает проверенный payload в дерево установки и служебные файлы. */
-async function stageRoot(extracted: string, work: string, app: string) {
+export async function stageRoot(extracted: string, work: string, app: string) {
   const root = path.join(work, "root")
   const application = path.join(extracted, app)
   for (const entry of ["bin/launcher", "bin/bun", "Resources/version.json"]) {
     assert.ok((await lstat(path.join(application, entry))).isFile(), "Missing native payload entry: " + entry)
   }
-  await cp(application, path.join(root, installRoot), { recursive: true })
+  await cp(application, path.join(root, installRoot), { recursive: true, verbatimSymlinks: true })
   await mkdir(path.join(root, "usr/bin"), { recursive: true })
   await symlink(`/${installRoot}/bin/launcher`, path.join(root, "usr/bin", desktopName))
   await mkdir(path.join(root, "usr/share/applications"), { recursive: true })
@@ -113,13 +115,13 @@ async function buildDeb(root: string, output: string, version: string): Promise<
   await mkdir(path.join(stage, "DEBIAN"))
   await writeFile(path.join(stage, "DEBIAN/control"), [
     "Package: xneon-launcher",
-    `Version: ${version}`,
+    `Version: ${linuxPackageVersion(version).deb}`,
     "Section: games",
     "Priority: optional",
     "Architecture: amd64",
     `Maintainer: ${maintainer}`,
     `Installed-Size: ${installedSize}`,
-    "Depends: libgtk-3-0, libwebkit2gtk-4.1-0, libayatana-appindicator3-1, libsecret-1-0, libnotify4, libxss1",
+    "Depends: libgtk-3-0t64 | libgtk-3-0, libwebkit2gtk-4.1-0, libayatana-appindicator3-1, libsecret-1-0, libnotify4, libxss1, libnss3, libasound2t64 | libasound2, libgbm1, libxcomposite1, libxdamage1, libxrandr2, libxfixes3, libdrm2, libcups2t64 | libcups2",
     "Description: XNeon Launcher",
     " Modern Minecraft launcher.",
     "",
@@ -136,10 +138,10 @@ async function buildRpm(root: string, work: string, output: string, version: str
   const top = path.join(work, "rpm")
   for (const directory of ["BUILD", "RPMS", "SOURCES", "SPECS", "SRPMS"]) await mkdir(path.join(top, directory), { recursive: true })
   const spec = path.join(top, "SPECS/xneon-launcher.spec")
-  const [base, prerelease] = version.split("-")
+  const nativeVersion = linuxPackageVersion(version)
   await writeFile(spec, `Name: xneon-launcher
-Version: ${base}
-Release: ${prerelease ? "0." + prerelease : "1"}
+Version: ${nativeVersion.rpmVersion}
+Release: ${nativeVersion.rpmRelease}
 Summary: Modern Minecraft launcher
 License: MIT
 URL: https://xneon.org
@@ -152,6 +154,15 @@ Requires: libayatana-appindicator-gtk3
 Requires: libsecret
 Requires: libnotify
 Requires: libXScrnSaver
+Requires: nss
+Requires: alsa-lib
+Requires: mesa-libgbm
+Requires: libXcomposite
+Requires: libXdamage
+Requires: libXrandr
+Requires: libXfixes
+Requires: libdrm
+Requires: cups-libs
 
 %description
 XNeon Launcher is a modern Minecraft launcher.
@@ -189,7 +200,7 @@ async function buildPacman(root: string, work: string, output: string, version: 
   const size = await sizeOf(root)
   await writeFile(path.join(stage, ".PKGINFO"), `pkgname = xneon-launcher
 pkgbase = xneon-launcher
-pkgver = ${version.replace(/-/g, "_")}-1
+pkgver = ${linuxPackageVersion(version).pacmanVersion}-${linuxPackageVersion(version).pacmanRelease}
 pkgdesc = Modern Minecraft launcher
 url = https://xneon.org
 builddate = ${Math.floor(Date.now() / 1000)}
@@ -203,6 +214,15 @@ depend = libayatana-appindicator
 depend = libsecret
 depend = libnotify
 depend = libxss
+depend = nss
+depend = alsa-lib
+depend = mesa
+depend = libxcomposite
+depend = libxdamage
+depend = libxrandr
+depend = libxfixes
+depend = libdrm
+depend = libcups
 `)
   run("bsdtar", ["-czf", ".MTREE", "--format=mtree", "--options=!all,use-set,type,uid,gid,mode,time,size,md5,sha256,link", ".PKGINFO", "opt", "usr"], { cwd: stage })
   const file = path.join(output, `xneon-launcher-${version}-x86_64.pacman`)
@@ -243,10 +263,19 @@ async function buildAppImage(root: string, work: string, output: string, version
   return { file: path.basename(file), magic: bytes => { assert.equal(bytes.subarray(1, 4).toString(), "ELF"); assert.deepEqual([...bytes.subarray(8, 11)], [0x41, 0x49, 0x02]) } }
 }
 
+export async function stageTarUpdateRoot(root: string) {
+  const stage = path.join(path.dirname(root), "tar-root")
+  await mkdir(stage)
+  await cp(root, stage, { recursive: true, verbatimSymlinks: true })
+  await writeFile(path.join(stage, installRoot, "Resources/update-installation.json"), JSON.stringify({ schemaVersion: 1, identifier: appIdentifier, format: "tar-xz" }), { flag: "wx" })
+  return stage
+}
+
 async function buildTarXz(root: string, output: string, version: string): Promise<Built> {
   const file = path.join(output, `xneon-launcher-${version}-x64.tar.xz`)
+  const stage = await stageTarUpdateRoot(root)
   progress("tar.xz: xz")
-  run("tar", ["-cJf", file, "-C", root, "opt", "usr"])
+  run("tar", ["-cJf", file, "-C", stage, "opt", "usr"])
   const entries = run("tar", ["-tJf", file])
   assert.ok(entries.includes(`${installRoot}/bin/launcher`), "tar.xz is missing the payload")
   return { file: path.basename(file), magic: bytes => { assert.deepEqual([...bytes.subarray(0, 6)], [0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00]) } }

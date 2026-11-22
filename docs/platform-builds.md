@@ -1,6 +1,6 @@
 # Native production builds
 
-Проект использует Bun **1.4.4**, Hutch **0.29.0**, Electrobun **2.0.6**, React 19.
+Проект использует Bun **1.4.4**, Hutch **0.30.0**, Electrobun **2.0.7**, React 19.
 Сборка выполняется на целевой ОС/архитектуре: renderer/typecheck не заменяют native build.
 
 | Цель | Предпосылки / статус конфигурации |
@@ -54,18 +54,19 @@ Native binary headers/version/resources/integrity проверяет artifact va
 реальная установка, GUI, keyring/WebView/CEF и update lifecycle требуют OS/VM smoke.
 
 `.github/workflows/ci.yml` выполняет только проверки; релизные пайплайны
-`release.yml` (stable) и `pre-release.yml` (canary) содержат jobs `tests → build → release`.
+`release.yml` (stable) и `pre-release.yml` (canary) содержат jobs
+`tests → build / build-linux / build-macos → release`.
 `tests` выполняет quality/offline gates один раз на Linux с timeout 15 минут.
-Платформенные suites дополнительно исполняются на Windows и обеих macOS архитектурах;
+Платформенные suites дополнительно исполняются на Windows и macOS arm64;
 это запускает native cases, которые Linux корректно пропускает.
-На tags и ручном запуске `build` использует native matrix
-Windows x64, Linux x64, macOS arm64/x64. Windows job стабильного канала собирает NSIS из того же
-payload и отдельный Portable; Linux job обоих каналов дополнительно собирает
-`scripts/package-linux.ts` из того же проверенного tar.zst системные пакеты
-(deb, rpm, pacman, AppImage, tar.xz) без пересборки бинарников. canary-пайплайн не собирает ни NSIS, ни Portable. На обычном push main/PR дорогих сборок нет.
+На tags и ручном запуске `build` собирает Windows x64 с NSIS из того же payload
+и отдельный Portable, `build-linux` — Linux x64 (Setup.tar.gz + deb/rpm/pacman/AppImage/tar.xz),
+`build-macos` — macOS arm64 DMG. Оба канала публикуют все три платформы; каждая
+подписывает свой Manifest v1, `release` сливает подписанные каталоги в `update-verified`.
+На обычном push main/PR дорогих сборок нет.
 Setup/install переиспользуется через composite action; кешируется только Bun download cache,
-не готовые binaries. Все build targets работают с `fail-fast: false`, `max-parallel: 3`.
-ARM64 собирается на `macos-26`, x64 — на `macos-15-intel`; нативные сборки идут только
+не готовые binaries. Все build jobs работают с `fail-fast: false`.
+macOS arm64 собирается на `macos-26`; нативные сборки идут только
 на теге и ручном запуске, поэтому PR остаётся дешёвым.
 `release` запускается только на version tag после tests и всей matrix: проверяет скачанные
 artifacts, подписывает Windows feeds, сверяет trusted signatures/allowlist/SHA256,
@@ -75,6 +76,15 @@ artifacts, подписывает Windows feeds, сверяет trusted signatur
 Signing/publish не запускается при PR, обычном push или локальной сборке.
 Environment `pre2-signing` должен разрешать защищённые version tags с approval;
 сохраните в нём secret `XNLC_UPDATE_PRIVATE_KEY` и variable `XNLC_UPDATE_KEY_ID`.
+
+**Ротация ключа подписи.** Доверие пинится в `electrobun/main/update-public-keys.ts`
+и попадает в собранный бандл вместе с приложением: подпись проверяет *установленная*
+сборка, а не CI. Поэтому новый ключ можно добавлять в реестр заранее, но переключать
+`XNLC_UPDATE_KEY_ID` на него в CI — только после того, как на машинах пользователей
+стоит сборка, которая этот ключ уже знает. Иначе клиенты, доверяющие лишь прежнему
+ключу, отвергнут следующий релиз с `Unknown update signing key` и потеряют
+автообновление. Прежние ключи остаются в реестре: они нужны для проверки уже
+опубликованных манифестов.
 В branch protection достаточно обязательного check `tests`.
 Promotion старых runs и сценарные inputs удалены; используются только artifacts текущего run.
 Build artifacts хранятся 7 дней. Timeout 15 минут относится к тестам, не ко всей native сборке.
