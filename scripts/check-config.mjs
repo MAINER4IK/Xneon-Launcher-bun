@@ -37,16 +37,28 @@ assert.equal(ci.jobs.tests['timeout-minutes'], 15)
 
 const pipeline = async (file, channel, tagPattern, label) => {
   const workflow = await load(file)
-  assert.deepEqual(Object.keys(workflow.jobs), ['tests', 'build', 'release'], `${label} has its own checks, build and publish jobs`)
+  assert.deepEqual(Object.keys(workflow.jobs), ['tests', 'build', 'build-linux', 'build-macos', 'release'], `${label} has checks, one build per published platform and the publish job`)
+  for (const [job, runner, platform, arch] of [
+    ['build-linux', 'ubuntu-24.04', 'linux', 'x64'],
+    ['build-macos', 'macos-26', 'macos', 'arm64'],
+  ]) {
+    const build = workflow.jobs[job]
+    assert.equal(build.needs, 'tests')
+    assert.equal(build['runs-on'], runner)
+    assert.equal(build.env.TARGET_PLATFORM, platform)
+    assert.equal(build.env.TARGET_ARCH, arch)
+    assert.ok(build.if.includes("startsWith(github.ref, 'refs/tags/v')"), `${label} builds ${platform} for release tags`)
+    assert.ok(build.steps.some(step => step.with?.name === `native-${platform}-${arch}-\${{ env.CHANNEL }}`), `${label} uploads the ${platform} publication payload`)
+  }
   assert.equal(workflow.env?.CHANNEL, channel, `${label} builds the ${channel} channel`)
   assert.deepEqual(workflow.on.push?.tags, channel === 'stable' ? [tagPattern, '!v*-pre*', '!v*-beta*'] : [tagPattern, 'v*-beta*'], `${label} reacts to its own channel only`)
   assert.ok(Object.hasOwn(workflow.on, 'workflow_dispatch'), `${label} supports a manual preflight build`)
   assert.equal(workflow.jobs.build.needs, 'tests')
-  assert.deepEqual(workflow.jobs.release.needs, ['tests', 'build'])
+  assert.deepEqual(workflow.jobs.release.needs, ['tests', 'build', 'build-linux', 'build-macos'])
   assert.equal(workflow.jobs.release.environment, 'pre2-signing')
   assert.equal(workflow.jobs.release.permissions.contents, 'write')
   assert.deepEqual(workflow.jobs.build.strategy.matrix.include.map(target => target.target), ['win-x64'])
-  assert.ok(workflow.jobs.build.strategy.matrix.include.every(item => item.runner === 'windows-2022' && item.arch === 'x64' && item.machine === 'X64'), `${label} temporarily builds Windows x64 only`)
+  assert.ok(workflow.jobs.build.strategy.matrix.include.every(item => item.runner === 'windows-2022' && item.arch === 'x64' && item.machine === 'X64'), `${label} builds Windows x64 with NSIS`)
   assert.equal(workflow.jobs.build.strategy['fail-fast'], false)
   assert.equal(workflow.jobs.build.strategy['max-parallel'], 3)
   return workflow
@@ -59,10 +71,20 @@ assert.ok(named(release.jobs.build, 'Ensure NSIS'), 'Stable Windows build instal
 assert.ok(named(release.jobs.build, 'Build and validate independent Portable profile'), 'Stable builds independent portable')
 assert.ok(named(prerelease.jobs.build, 'Ensure NSIS'), 'Canary also ships the NSIS installer used for channel switching')
 assert.ok(named(prerelease.jobs.build, 'Build and validate independent Portable profile'), 'Prerelease builds independent portable')
-assert.equal(named(release.jobs.build, 'Build stable native artifacts (NSIS on Windows only)').run, 'bun run build')
+assert.equal(named(release.jobs.build, 'Build stable Windows artifacts (NSIS)').run, 'bun run build')
 assert.equal(named(prerelease.jobs.build, 'Build canary native artifacts').run, 'bun run build:canary')
 assert.ok(release.jobs.tests.steps.some(step => step.run === 'bun scripts/ci-release.ts channel'), 'Stable pipeline asserts its own channel first')
 assert.ok(prerelease.jobs.tests.steps.some(step => step.run === 'bun scripts/ci-pre-release.ts channel'), 'Prerelease pipeline asserts its own channel first')
+for (const [workflow, channel] of [[release, 'stable'], [prerelease, 'canary']]) {
+  const sign = workflow.jobs.release.steps.find(step => step.name?.includes('Sign each published target'))
+  assert.ok(sign, 'Every published target is signed in one protected step')
+  for (const target of ['win-x64', 'linux-x64', 'macos-arm64']) {
+    assert.ok(sign.run.includes(`native-${target}-${channel} signed-`), 'Missing signing command for ' + target)
+  }
+  assert.ok(sign.run.includes(`native-linux-x64-${channel} signed-linux linux x64 release-candidates/native-linux-x64-packages`), 'Linux signing consumes distributions')
+  assert.ok(sign.run.includes(`native-win-x64-${channel} signed-win win x64`), 'Windows signing declares its target')
+  assert.ok(sign.run.includes(`native-macos-arm64-${channel} signed-macos macos arm64`), 'macOS signing declares its target')
+}
 assert.ok(!source['release.yml'].includes('canary-'), 'Stable pipeline never mentions canary artifacts')
 assert.ok(!source['pre-release.yml'].includes('stable-'), 'Prerelease pipeline never mentions stable artifacts')
 
