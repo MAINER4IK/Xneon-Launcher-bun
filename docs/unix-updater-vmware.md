@@ -33,7 +33,7 @@ AppImage. Helper наследует этот профиль. Runtime, БД и п
 ## 2. Тестовые HTTPS и Ed25519 — только в этой копии исходников
 
 Production-бинарники намеренно не принимают ключи и URL из runtime environment.
-Для частного E2E подготовьте отдельные VM-бинарники с одинаковым test pinning в A/B/C
+Для частного E2E подготовьте отдельные VM-бинарники с одинаковым test pinning в A/B
 **и в standalone helper**. Не используйте production private key.
 Следующие изменения относятся исключительно к клону VM, их нельзя отправлять в рабочую ветку.
 
@@ -77,14 +77,18 @@ Windows `update-public-keys.ts` и Windows updater не изменяются: te
 общему `update-public-keys`, который читают и платформенные verifier-ы, и единый signer.
 Схема документа и подписи у Windows и Unix одна — Manifest v1 и Ed25519.
 
-## 3. Собрать и подписать A, B, C до начала установки
+## 3. Собрать и подписать A и B до начала установки
 
-Используйте версии A=`1.0.8`, B=`1.0.9`, C=`1.0.10`. Для canary отдельно
-соберите `1.0.10-pre1` тем же test pinning. Каждой версии нужен собственный SDK build hash.
+Используйте реальные stable-версии: A=`1.0.7`, B=`1.0.8`. Stable-канал принимает
+только финальные версии (prerelease в stable отвергается verifier-ом), поэтому
+цепочка ограничена двумя шагами до следующего публичного выпуска. Для canary
+соберите ту же версию `1.0.8` через `bun run build:canary`: канал задаётся сборкой,
+а не номером версии. Сборки существуют только в VM и никогда не публикуются.
+Каждой версии нужен собственный SDK build hash.
 Для каждой stable-версии, меняя `VERSION` и `LABEL`, выполните:
 
 ```bash
-export VERSION=1.0.8 LABEL=A
+export VERSION=1.0.7 LABEL=A
 VERSION="$VERSION" bun -e 'const file = Bun.file("package.json"); const value = await file.json(); value.version = process.env.VERSION; await Bun.write(file, JSON.stringify(value, null, 2) + "\n")'
 bun run build
 mkdir -p ".local-research/vm/releases/$LABEL"
@@ -99,8 +103,9 @@ Signer публикует один и тот же подписанный Manifes
 `<channel>-linux-x64-update-v2.json` (байт-идентичный алиас для SDK и выпущенных
 Windows-клиентов). Оба `.sig` обязательны.
 
-Повторите для B/C. Для canary применяются `bun run build:canary`, каталог
-`release-electrobun/canary` и аргумент `canary` вместо `stable` в обоих scripts.
+Повторите для B (`VERSION=1.0.8 LABEL=B`). Для canary применяются
+`bun run build:canary`, каталог `release-electrobun/canary` и аргумент `canary`
+вместо `stable` в обоих scripts.
 Не подписывайте A после смены package.json на B: signer проверяет точную версию.
 Native `-update.json`/`-update-v2.json` не редактируются: signer собирает из них
 расширенный v1 (с `download*`, `distributions`) и пишет его в новый каталог.
@@ -117,8 +122,8 @@ ln -s "$PWD/.local-research/vm/releases/B/signed" .local-research/vm/feeds/relea
 mv -Tf .local-research/vm/feeds/releases/latest/download.next .local-research/vm/feeds/releases/latest/download
 ```
 
-Для C замените B на C. `feeds/releases/download/canary` аналогично указывает на
-подписанный canary candidate. Не меняйте origin/канал/подпись уже работающей A вручную.
+`feeds/releases/download/canary` аналогично указывает на подписанный canary candidate.
+Не меняйте origin/канал/подпись уже работающей A вручную.
 
 ## 4. Настоящая установка и сценарии
 
@@ -140,10 +145,12 @@ mv -Tf .local-research/vm/feeds/releases/latest/download.next .local-research/vm
 Запишите SHA-256 sentinel и значения SQLite; не используйте рабочие аккаунты/токены.
 Через UI выполнить и сохранить доказательства:
 
-1. Проверка B → скачивание B → «Позже». Закрыть/открыть приложение: применяется B.
-2. Проверка C → скачивание C → «Перезапустить сейчас»: появляется настоящая C.
+1. Проверка B → скачивание B → «Позже». Закрыть/открыть приложение: применяется B (`1.0.8`).
+2. Вернуть A (`1.0.7`), затем проверить B → скачивание B → «Перезапустить сейчас»:
+   появляется настоящая B. Второй путь проверяет немедленный перезапуск.
 3. Смена stable/canary **только выбирает канал**. Отдельно проверить/скачать/установить;
-   выполнить обратный переход, в том числе на меньшую версию при явной смене канала.
+   выполнить обратный переход при явной смене канала (обе сборки — `1.0.8`,
+   отличается только канал).
 4. После каждого шага сверить `Resources/version.json`, SHA-256 бинарников,
    настройки/аккаунты/sentinel. Убедиться, что helper runtime находился вне заменяемого app.
 5. Подмена одного байта payload/manifest/signature должна блокироваться до замены.
