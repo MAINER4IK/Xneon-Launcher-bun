@@ -8,6 +8,40 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 type UpdateStatus = "idle" | "checking" | "downloading" | "available" | "downloaded" | "preparing" | "error" | "not-available"
 type UpdateChannel = "stable" | "beta"
 
+// main присылает стабильные коды ошибок; неизвестные (например, текст SDK)
+// показываем как есть.
+const UPDATE_ERROR_KEYS: Record<string, string> = {
+  "unknown-channel": "launcherUpdate.errors.unknownChannel",
+  "update-in-progress": "launcherUpdate.errors.updateInProgress",
+  "portable-manual-update": "launcherUpdate.errors.portableManualUpdate",
+  "check-unavailable": "launcherUpdate.errors.checkUnavailable",
+  "unsupported-package": "launcherUpdate.errors.unsupportedPackage",
+  "manifest-hash-reused": "launcherUpdate.errors.manifestHashReused",
+  "download-unavailable": "launcherUpdate.errors.downloadUnavailable",
+  "unsupported-channel": "launcherUpdate.errors.unsupportedChannel",
+  "update-unavailable": "launcherUpdate.errors.updateUnavailable",
+  "minecraft-running": "launcherUpdate.errors.minecraftRunning",
+  "update-not-prepared": "launcherUpdate.errors.updateNotPrepared",
+  "cleanup-failed": "launcherUpdate.errors.cleanupFailed",
+  "restart-cancelled": "launcherUpdate.errors.restartCancelled",
+  "update-cancelled": "launcherUpdate.errors.restartCancelled",
+  "update-install-cancelled": "launcherUpdate.errors.restartCancelled",
+  "update-no-permission": "launcherUpdate.errors.noPermission",
+  "update-privileges-required": "launcherUpdate.errors.noPermission",
+  "update-read-only-installation": "launcherUpdate.errors.noPermission",
+  "update-unsupported-installation": "launcherUpdate.errors.unsupportedInstallation",
+  "update-atomic-replacement-unavailable": "launcherUpdate.errors.unsupportedInstallation",
+  "update-storage-inside-installation": "launcherUpdate.errors.unsupportedInstallation",
+  "update-package-manager-failed": "launcherUpdate.errors.packageFailure",
+  "update-helper-exited": "launcherUpdate.errors.helperFailure",
+  "update-helper-timeout": "launcherUpdate.errors.helperFailure",
+  "update-startup-failed": "launcherUpdate.errors.helperFailure",
+  "update-recovery-required": "launcherUpdate.errors.recoveryRequired",
+  "update-insufficient-space": "launcherUpdate.errors.insufficientSpace",
+  "update-verification-failed": "launcherUpdate.errors.verificationFailed",
+  "Unknown error": "launcherUpdate.errors.unknown",
+}
+
 export function SettingsUpdate() {
   const { t } = useTranslation()
   const [status, setStatus] = useState<UpdateStatus>("idle")
@@ -22,10 +56,14 @@ export function SettingsUpdate() {
   const [deferred, setDeferred] = useState(false)
   const [deferring, setDeferring] = useState(false)
   const busy = savingChannel || deferring || status === "checking" || status === "downloading" || status === "preparing"
+  const describeError = useCallback((raw: string) => {
+    const key = UPDATE_ERROR_KEYS[raw]
+    return key ? t(key) : raw
+  }, [t])
   const showError = useCallback((error: unknown) => {
     setStatus("error")
-    setErrorMsg(error instanceof Error ? error.message : String(error))
-  }, [])
+    setErrorMsg(describeError(error instanceof Error ? error.message : String(error)))
+  }, [describeError])
 
   useEffect(() => {
     const api = window.electrobunAPI
@@ -68,7 +106,7 @@ export function SettingsUpdate() {
         setStatus("not-available")
       } else if (s.status === "error") {
         setStatus("error")
-        setErrorMsg(s.error ?? "Unknown error")
+        setErrorMsg(describeError(s.error ?? "Unknown error"))
       }
     })
     const unsubProgress = api.onUpdateProgress((p) => {
