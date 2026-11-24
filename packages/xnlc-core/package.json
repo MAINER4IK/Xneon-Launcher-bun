@@ -49,14 +49,16 @@
     }
   },
   "dependencies": {
+    "@xnlc/archives": "workspace:*",
     "@xnlc/types": "workspace:*",
-    "adm-zip": "^0.6.0"
+    "@xnlc/urls": "workspace:*",
+    "iconv-lite": "^0.7.3"
   },
   "scripts": {
-    "generate:legacy": "node scripts/generate-legacy-bootstrap.mjs",
-    "build": "node ./scripts/clean-legacy-forge-launch.mjs && tsc -p tsconfig.json",
+    "generate:legacy": "bun scripts/generate-legacy-bootstrap.mjs",
+    "build": "bun ./scripts/clean-legacy-forge-launch.mjs && bun --bun run tsc -p tsconfig.json",
     "clean": "rm -rf lib",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "bun run build"
   },
   "main": "lib/index.js",
   "types": "lib/index.d.ts",

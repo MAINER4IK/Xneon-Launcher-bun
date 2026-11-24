@@ -92,7 +92,7 @@ export function ServerTile({ server, state, onClick, onStart, onStop, onDelete, 
           {/* Play/Stop button */}
           <button data-ui="server-tile-button-1"
             onClick={handlePlayStop}
-            disabled={isStopping}
+            disabled={isStopping || !!server.remote && !(canStop ? server.remote.permissions.stop : server.remote.permissions.start)}
             className={cn(
               "absolute bottom-2 right-2 p-2 rounded-xl backdrop-blur-sm transition-all",
               "group-hover:scale-110",

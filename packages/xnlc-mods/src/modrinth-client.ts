@@ -1,3 +1,5 @@
+declare const XNLC_APPLICATION_USER_AGENT: string | undefined
+const XNLC_USER_AGENT = typeof XNLC_APPLICATION_USER_AGENT === "string" ? XNLC_APPLICATION_USER_AGENT : "xnlc-mods"
 // ============================================================
 // XNLC Mods — Modrinth API Client
 // Author: MAINER4IK
@@ -18,7 +20,9 @@ import type {
 } from "./types.js";
 import { MOD_SORT_OPTIONS, CONTENT_TYPE_FACETS } from "./types.js";
 
-const MODRINTH_API = "https://api.modrinth.com/v2";
+import { CONTENT_URLS } from "@xnlc/urls";
+
+const MODRINTH_API = CONTENT_URLS.modrinthApi;
 const MODS_PER_PAGE = 20;
 const MAX_RETRIES = 2;
 
@@ -32,7 +36,7 @@ async function mrFetch(endpoint: string): Promise<unknown> {
     const timer = setTimeout(() => controller.abort(), 15_000);
     try {
       const res = await fetch(`${MODRINTH_API}${endpoint}`, {
-        headers: { "User-Agent": "Xneon-Launcher/1.0 (launcher@xneon.fun)" },
+        headers: { "User-Agent": XNLC_USER_AGENT },
         signal: controller.signal,
       });
       if (res.status === 429) {
@@ -54,7 +58,9 @@ async function mrFetch(endpoint: string): Promise<unknown> {
   throw lastError;
 }
 
-const KNOWN_MR_LOADERS = new Set(["forge", "fabric", "neoforge", "quilt", "liteloader", "rift", "modloader"]);
+const KNOWN_MR_LOADERS = new Set([
+  "forge", "fabric", "neoforge", "quilt", "liteloader",
+]);
 
 function normalizeMrProject(item: any): ModSearchResult {
   const versions: string[] = Array.isArray(item.versions) ? item.versions : [];
@@ -277,7 +283,7 @@ export async function modrinthGetProjectsByIds(ids: string[]): Promise<Record<st
       const abort = new AbortController();
       const timer = setTimeout(() => abort.abort(), 15_000);
       const res = await fetch(`${MODRINTH_API}/projects?ids=${encodeURIComponent(JSON.stringify(batch))}`, {
-        headers: { "User-Agent": "Xneon-Launcher/1.0 (launcher@xneon.fun)" },
+        headers: { "User-Agent": XNLC_USER_AGENT },
         signal: abort.signal,
       });
       clearTimeout(timer);
@@ -316,7 +322,7 @@ export async function modrinthGetVersionsByIds(ids: string[]): Promise<Record<st
       const abort = new AbortController();
       const timer = setTimeout(() => abort.abort(), 15_000);
       const res = await fetch(`${MODRINTH_API}/versions?ids=${encodeURIComponent(JSON.stringify(batch))}`, {
-        headers: { "User-Agent": "Xneon-Launcher/1.0 (launcher@xneon.fun)" },
+        headers: { "User-Agent": XNLC_USER_AGENT },
         signal: abort.signal,
       });
       clearTimeout(timer);
@@ -346,6 +352,16 @@ export async function modrinthGetRawVersions(slug: string): Promise<ModrinthVers
     return Array.isArray(data) ? data : [];
   } catch {
     return [];
+  }
+}
+
+/** Resolves the owning project for a version ID embedded in an .mrpack index. */
+export async function modrinthGetProjectIdByVersion(versionId: string): Promise<string | null> {
+  try {
+    const data = await mrFetch(`/version/${encodeURIComponent(versionId)}`) as { project_id?: unknown }
+    return typeof data.project_id === "string" ? data.project_id : null
+  } catch {
+    return null
   }
 }
 
@@ -379,7 +395,7 @@ export async function modrinthGetFilesByHash(sha1s: string[]): Promise<Record<st
       try {
         const res = await fetch(`${MODRINTH_API}/version_files`, {
           method: "POST",
-          headers: { "User-Agent": "Xneon-Launcher/1.0 (launcher@xneon.fun)", "Content-Type": "application/json" },
+          headers: { "User-Agent": XNLC_USER_AGENT, "Content-Type": "application/json" },
           body: JSON.stringify({ hashes: batch, algorithm: "sha1" }),
         })
         if (res.status === 429) {
@@ -430,7 +446,7 @@ export async function modrinthCheckUpdates(
       const res = await fetch(`${MODRINTH_API}/version_files/update`, {
         method: "POST",
         headers: {
-          "User-Agent": "Xneon-Launcher/1.0 (launcher@xneon.fun)",
+          "User-Agent": XNLC_USER_AGENT,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),

@@ -1,3 +1,4 @@
+import { useConfirmDialog } from "@/lib/use-confirm-dialog"
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import {
@@ -40,6 +41,7 @@ const AUTHLIB_COLOR = "var(--primary)"
 
 export function AuthlibInjectorModal({ onClose, onAccountAdded }: AuthlibInjectorModalProps) {
   const { t } = useTranslation()
+  const { ask, dialog: confirmationDialog } = useConfirmDialog()
 
   const [view, setView] = useState<ModalView>("login")
   const [servers, setServers] = useState<AuthlibInjectorServerSummary[]>([])
@@ -96,7 +98,7 @@ export function AuthlibInjectorModal({ onClose, onAccountAdded }: AuthlibInjecto
   }, [t])
 
   useEffect(() => {
-    const unsubscribe = window.electronAPI?.onAuthlibLoginProgress((progress) => {
+    const unsubscribe = window.electrobunAPI?.onAuthlibLoginProgress((progress) => {
       if (closedRef.current) return
       setLoginPhase(progress.phase)
     })
@@ -107,7 +109,7 @@ export function AuthlibInjectorModal({ onClose, onAccountAdded }: AuthlibInjecto
   const loadServers = useCallback(async () => {
     setLoadingServers(true)
     try {
-      const list = await window.electronAPI?.authlibListServers()
+      const list = await window.electrobunAPI?.authlibListServers()
       if (list) {
         setServers(list)
         if (list.length > 0 && !selectedServerId) {
@@ -135,7 +137,7 @@ export function AuthlibInjectorModal({ onClose, onAccountAdded }: AuthlibInjecto
     setLoginPhase("metadata")
 
     try {
-      const outcome = await window.electronAPI?.authlibLogin(
+      const outcome = await window.electrobunAPI?.authlibLogin(
         selectedServerId,
         username.trim(),
         password,
@@ -171,16 +173,10 @@ export function AuthlibInjectorModal({ onClose, onAccountAdded }: AuthlibInjecto
         type: "authlib-injector",
         username: result.username,
         uuid: result.uuid,
-        accessToken: result.accessToken,
-        yggClientToken: result.clientToken,
         serverId: result.serverId,
         serverUrl: result.serverUrl,
         serverName: result.serverName,
         skinUrl: result.skinUrl,
-        profiles: JSON.stringify({
-          selected: result.selectedProfile,
-          available: result.availableProfiles,
-        }),
         isActive: true,
       })
       closeModal()
@@ -212,7 +208,7 @@ export function AuthlibInjectorModal({ onClose, onAccountAdded }: AuthlibInjecto
     setProbeError("")
 
     try {
-      const outcome = await window.electronAPI?.authlibProbeServer(inputUrl.trim())
+      const outcome = await window.electrobunAPI?.authlibProbeServer(inputUrl.trim())
       if (!outcome) {
         setProbeError(t("accounts.authlibCheckFailed", "Failed to check authorization server"))
         setAddStep("input")
@@ -239,7 +235,7 @@ export function AuthlibInjectorModal({ onClose, onAccountAdded }: AuthlibInjecto
     setAddingServer(true)
     setProbeError("")
     try {
-      const outcome = await window.electronAPI?.authlibAddServer(probeResult)
+      const outcome = await window.electrobunAPI?.authlibAddServer(probeResult)
       if (!outcome) {
         setProbeError(t("accounts.authlibCheckFailed", "Failed to check authorization server"))
         return
@@ -269,7 +265,7 @@ export function AuthlibInjectorModal({ onClose, onAccountAdded }: AuthlibInjecto
   const handleRemoveServer = async (serverId: string, e: React.MouseEvent) => {
     e.stopPropagation()
     try {
-      const accounts = await window.electronAPI?.loadAccounts() ?? []
+      const accounts = await window.electrobunAPI?.loadAccounts() ?? []
       const linked = accounts.filter((a) => a.type === "authlib-injector" && a.serverId === serverId)
       setPendingServerRemoval({ id: serverId, linkedCount: linked.length })
     } catch (err) {
@@ -281,7 +277,7 @@ export function AuthlibInjectorModal({ onClose, onAccountAdded }: AuthlibInjecto
     if (!pendingServerRemoval) return
     const serverId = pendingServerRemoval.id
     try {
-      const result = await window.electronAPI?.authlibRemoveServer(serverId)
+      const result = await window.electrobunAPI?.authlibRemoveServer(serverId)
       const removed = result?.removedAccounts ?? 0
       await loadServers()
       if (selectedServerId === serverId) {
@@ -289,10 +285,10 @@ export function AuthlibInjectorModal({ onClose, onAccountAdded }: AuthlibInjecto
         setSelectedServerId(remaining.length > 0 ? remaining[0].id : "")
       }
       if (removed > 0) {
-        window.alert(t("accounts.authlibServerRemovedAccounts", {
+        void ask(t("accounts.authlibServerRemovedAccounts", {
           count: removed,
           defaultValue: "Сервер удалён. Затронуто аккаунтов: {{count}}.",
-        }))
+        }), true)
       }
     } catch (err) {
       console.error("Failed to remove server:", err)
@@ -307,6 +303,7 @@ export function AuthlibInjectorModal({ onClose, onAccountAdded }: AuthlibInjecto
       className="animate-in fade-in-0"
     >
       <div data-ui="accounts-authlib-injector-modal-div-1" data-component="authlib-injector-modal" className="w-full max-w-md mx-4 p-6 rounded-2xl bg-card border border-border shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-4">
+        {confirmationDialog}
         {/* Header — identical layout to Ely.by / Microsoft modals */}
         <div data-ui="accounts-authlib-injector-modal-div-2" className="flex items-center justify-between mb-6">
           <h3 data-ui="accounts-authlib-injector-modal-h3-1" className="flex items-center gap-2 text-lg font-semibold text-foreground">
@@ -317,7 +314,7 @@ export function AuthlibInjectorModal({ onClose, onAccountAdded }: AuthlibInjecto
                 ? t("accounts.authlibSelectProfile", "Выбор персонажа")
                 : t("accounts.loginTitle.authlib", "Вход через Authlib-Injector")}
           </h3>
-          <button data-ui="accounts-authlib-injector-modal-button-1"
+          <button data-modal-close data-ui="accounts-authlib-injector-modal-button-1"
             onClick={closeModal}
             className="w-8 h-8 rounded-lg border border-border bg-muted/60 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
           >
@@ -575,10 +572,7 @@ export function AuthlibInjectorModal({ onClose, onAccountAdded }: AuthlibInjecto
               </div>
             ) : servers.length === 0 ? (
               /* No servers configured */
-              <div data-ui="accounts-authlib-injector-modal-div-31" className="py-6 text-center space-y-3">
-                <div data-ui="accounts-authlib-injector-modal-div-32" className="w-12 h-12 rounded-xl bg-muted/50 flex items-center justify-center mx-auto text-muted-foreground">
-                  <IconWorld className="w-6 h-6" />
-                </div>
+              <div data-ui="accounts-authlib-injector-modal-div-31" className="pt-0 pb-6 text-center space-y-3">
                 <div data-ui="accounts-authlib-injector-modal-div-33">
                   <p data-ui="accounts-authlib-injector-modal-p-9" className="text-sm font-medium text-foreground">
                     {t("accounts.authlibNoServers", "Нет настроенных серверов авторизации")}

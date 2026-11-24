@@ -10,7 +10,7 @@ import { CatalogToolbar } from "./catalog-toolbar"
 import { PlayerHeader } from "./player-header"
 import { Spinner } from "@/components/launcher/instance/spinner"
 import { EMPTY_FILTERS, countActiveFilters, type CatalogFilters } from "./catalog-filters-dialog"
-import { LABY_DEFAULT_ORDER, labyHashFromSourceId, labyPlayerSkinToSkin } from "@xnlc/skins"
+import { LABY_DEFAULT_ORDER, labyHashFromSourceId, labyPlayerSkinToSkin } from "@xnlc/skins/browser"
 import type { LabyOrder, LabyPlayer, LabySkin, LabyTag } from "@xnlc/types"
 import { IconAlertTriangle, IconChevronLeft, IconChevronRight, IconLayoutGrid, IconRefresh, IconUsers } from "@tabler/icons-react"
 import { ActionConfirmDialog } from "@/components/launcher/instance/action-confirm-dialog"
@@ -20,7 +20,6 @@ const GRID_CLASS = SKIN_GRID_CLASS
 /** Пауза перед локальным поиском: пользователь ещё печатает. */
 const SEARCH_DEBOUNCE_MS = 400
 
-const PAGE_SIZE = 24
 
 function SectionHeader({
   icon,
@@ -36,8 +35,8 @@ function SectionHeader({
   trailing?: React.ReactNode
 }) {
   return (
-    <div data-ui="laby-library-tab-div-1" data-component="section-header" className="flex items-center gap-2.5">
-      <div data-ui="laby-library-tab-div-2" className="grid size-7 shrink-0 place-items-center rounded-lg border border-primary/10 bg-primary/10">
+    <div data-ui="laby-library-tab-div-1" data-component="section-header" className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
+      <div data-ui="laby-library-tab-div-2" className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10">
         {icon}
       </div>
       <div data-ui="laby-library-tab-div-3" className="min-w-0 flex-1">
@@ -47,7 +46,7 @@ function SectionHeader({
             <span data-ui="laby-library-tab-span-1" className="text-[11px] font-medium tabular-nums text-muted-foreground/50">{count}</span>
           )}
         </div>
-        {hint && <p data-ui="laby-library-tab-p-1" className="truncate text-[11px] text-muted-foreground/50">{hint}</p>}
+        {hint && <p data-ui="laby-library-tab-p-1" className="text-xs leading-relaxed text-muted-foreground">{hint}</p>}
       </div>
       {trailing}
     </div>
@@ -121,6 +120,32 @@ export function LabyLibraryTab() {
   const [pendingRemove, setPendingRemove] = useState<LabySkin | null>(null)
 
   const gridRef = useRef<HTMLDivElement>(null)
+  const [pageSize, setPageSize] = useState(24)
+  useEffect(() => {
+    const container = gridRef.current
+    if (!container) return
+    let timer: ReturnType<typeof setTimeout>
+    const measure = () => {
+      clearTimeout(timer)
+      timer = setTimeout(() => {
+        const bounds = container.getBoundingClientRect()
+        const gap = parseFloat(getComputedStyle(document.documentElement).fontSize) * 0.625
+        const width = Math.max(1, container.clientWidth - 8)
+        const columns = Math.max(1, Math.floor((width + gap) / (180 + gap)))
+        const cardHeight = (width - (columns - 1) * gap) / columns * 40 / 31
+        const height = Math.max(cardHeight, window.innerHeight - bounds.top - 140)
+        const rows = Math.max(1, Math.floor((height + gap) / (cardHeight + gap)))
+        const count = columns * Math.min(Math.max(rows, Math.ceil(6 / columns)), Math.max(1, Math.floor(100 / columns)))
+        setPageSize(count)
+      }, 150)
+    }
+    const observer = new ResizeObserver(measure)
+    observer.observe(container)
+    window.addEventListener("resize", measure)
+    measure()
+    return () => { clearTimeout(timer); observer.disconnect(); window.removeEventListener("resize", measure) }
+  }, [])
+
   /** Защита от гонки: ответ устаревшего запроса не должен перезаписать свежий. */
   const requestIdRef = useRef(0)
 
@@ -142,14 +167,14 @@ export function LabyLibraryTab() {
   useEffect(() => {
     const username = query.trim()
     // Ник — латиница, цифры, подчёркивание и точка; короче трёх символов не ищем.
-    if (!window.electronAPI || username.length < 3 || !/^[A-Za-z0-9_.]+$/.test(username)) {
+    if (!window.electrobunAPI || username.length < 3 || !/^[A-Za-z0-9_.]+$/.test(username)) {
       setPlayer(null)
       setPlayerLoading(false)
       return
     }
     let cancelled = false
     setPlayerLoading(true)
-    window.electronAPI
+    window.electrobunAPI
       .labyPlayer(username)
       .then((result) => {
         if (!cancelled) setPlayer(result)
@@ -165,16 +190,18 @@ export function LabyLibraryTab() {
     }
   }, [query])
 
+  useEffect(() => { setPage(0) }, [pageSize])
+
   const loadPage = useCallback(
     async (targetPage: number, targetOrder: LabyOrder, targetFilters: CatalogFilters, targetQuery: string) => {
-      if (!window.electronAPI) return
+      if (!window.electrobunAPI) return
       const requestId = requestIdRef.current + 1
       requestIdRef.current = requestId
       setLoading(true)
       try {
-        const result = await window.electronAPI.labyCatalog(
+        const result = await window.electrobunAPI.labyCatalog(
           targetPage,
-          PAGE_SIZE,
+          pageSize,
           targetOrder,
           targetFilters.tags,
           targetQuery || null,
@@ -197,7 +224,7 @@ export function LabyLibraryTab() {
         if (requestIdRef.current === requestId) setLoading(false)
       }
     },
-    [],
+    [pageSize],
   )
 
   useEffect(() => {
@@ -207,9 +234,9 @@ export function LabyLibraryTab() {
   // Теги Laby — единственный серверный источник категорий.
   useEffect(() => {
     let cancelled = false
-    if (!window.electronAPI) return
+    if (!window.electrobunAPI) return
     setTagsLoading(true)
-    window.electronAPI
+    window.electrobunAPI
       .labyTags(i18n.language)
       .then((result) => {
         if (!cancelled) setTags(result)
@@ -226,11 +253,11 @@ export function LabyLibraryTab() {
   // Что из каталога уже лежит в «Избранном» — по sourceId из базы.
   useEffect(() => {
     let cancelled = false
-    if (!accountId || !window.electronAPI) {
+    if (!accountId || !window.electrobunAPI) {
       setFavorites(new Map())
       return
     }
-    window.electronAPI
+    window.electrobunAPI
       .skinsListLibrary(accountId)
       .then((skins) => {
         if (cancelled) return
@@ -250,13 +277,13 @@ export function LabyLibraryTab() {
 
   // Похожие скины для выбранного: Laby такого эндпоинта не даёт, считает main.
   useEffect(() => {
-    if (!selected || !window.electronAPI) {
+    if (!selected || !window.electrobunAPI) {
       setSimilar([])
       return
     }
     let cancelled = false
     setSimilarLoading(true)
-    window.electronAPI
+    window.electrobunAPI
       .labySimilar(selected.hash, selected.tags, selected.slim)
       .then((result) => {
         if (!cancelled) setSimilar(result)
@@ -274,7 +301,7 @@ export function LabyLibraryTab() {
 
   const runAction = useCallback(
     async (skin: LabySkin, mode: "save" | "apply" | "remove") => {
-      if (!accountId || !window.electronAPI) return
+      if (!accountId || !window.electrobunAPI) return
       if (mode === "apply" && !canApply) return
 
       // Снять с избранного можно только то, что там лежит.
@@ -284,7 +311,7 @@ export function LabyLibraryTab() {
       setBusy({ hash: skin.hash, mode })
       try {
         if (mode === "remove" && librarySkinId) {
-          const ok = await window.electronAPI.skinsDeleteFromLibrary(librarySkinId)
+          const ok = await window.electrobunAPI.skinsDeleteFromLibrary(librarySkinId)
           if (!ok) {
             pushNotification({
               kind: "error",
@@ -299,11 +326,6 @@ export function LabyLibraryTab() {
             next.delete(skin.hash)
             return next
           })
-          // Если сняли именно надетый скин, локальная метка «надет» больше не
-          // действительна — иначе «Избранное» выберет несуществующую запись.
-          if (localStorage.getItem(`skin-equipped-${accountId}`) === librarySkinId) {
-            localStorage.removeItem(`skin-equipped-${accountId}`)
-          }
           pushNotification({
             kind: "success",
             source: "import",
@@ -317,8 +339,8 @@ export function LabyLibraryTab() {
 // определить slim по метаданным там было бы неоткуда.
         const result =
           mode === "apply"
-            ? await window.electronAPI.labyApply(skin.hash, accountId, skin.name, skin.slim)
-            : await window.electronAPI.labySaveToLibrary(skin.hash, accountId, skin.name, skin.slim)
+            ? await window.electrobunAPI.labyApply(skin.hash, accountId, skin.name, skin.slim)
+            : await window.electrobunAPI.labySaveToLibrary(skin.hash, accountId, skin.name, skin.slim)
 
         if (!result.saved) {
           pushNotification({
@@ -341,9 +363,8 @@ export function LabyLibraryTab() {
 
         if (mode === "apply") {
           if (result.applied) {
-            if (result.librarySkinId) localStorage.setItem(`skin-equipped-${accountId}`, result.librarySkinId)
             const targetAcc = accounts.find((a) => a.id === accountId)
-            await window.electronAPI.avatarInvalidateCache?.({ username: targetAcc?.username, uuid: targetAcc?.uuid, type: targetAcc?.type })
+            await window.electrobunAPI.avatarInvalidateCache?.({ username: targetAcc?.username, uuid: targetAcc?.uuid, type: targetAcc?.type })
             // Ссылка на активную текстуру обновилась в main — перечитываем
             // аккаунты, чтобы аватар показал новый скин.
             await reloadAccounts()

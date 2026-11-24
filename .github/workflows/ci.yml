@@ -1,0 +1,60 @@
+name: CI
+
+# Проверки на каждый push в main и рабочую ветку, а также на PR. Сборка и публикация живут в release.yml
+# (стабильный тег) и pre-release.yml (тег -preN).
+on:
+  push:
+    branches: [main, feature/unix-native-acceptance]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  HUTCH_NO_UPDATE_CHECK: '1'
+  BUN_OPTIONS: --no-env-file
+  XNLC_SKIP_LOCAL_DOTENV: '1'
+  XNLC_PARSER_LIVE_TESTS: '0'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          desktop: 'true'
+      - run: bun scripts/gen-agent-ipc-catalog.mjs --check
+      - run: bun run prepare:desktop
+      - run: bun scripts/check-config.mjs
+      - run: bun scripts/check-import-cycles.mjs
+      - run: bun run typecheck
+      - name: Validate GitHub Actions syntax, expressions and dependencies
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          curl --fail --silent --show-error --location https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o "$archive"
+          echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  '"$archive" | sha256sum --check -
+          mkdir "$RUNNER_TEMP/actionlint"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/actionlint" actionlint
+          "$RUNNER_TEMP/actionlint/actionlint" -shellcheck= -pyflakes= .github/workflows/*.yml
+      - name: Transpile main modules for desktop tests
+        run: bun scripts/build-electrobun-tests.mjs
+      - name: Offline tests (workspaces already prepared)
+        run: bun run test:offline:prepared
+      - name: Production renderer and worker bundles
+        run: |
+          bun run build:renderer
+          bun run build:workers

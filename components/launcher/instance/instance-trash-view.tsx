@@ -1,7 +1,7 @@
 // Корзина сборок: содержимое строк и IPC — здесь, вся общая логика в TrashView.
 
 import { useTranslation } from "react-i18next"
-import { IconPackage } from "@tabler/icons-react"
+import { IconColorSwatch } from "@tabler/icons-react"
 import { TrashView } from "../trash-view"
 import { LoaderIcon } from "./loader-icon"
 
@@ -24,14 +24,14 @@ export function InstanceTrashView({ goToMyBuilds, onRestore }: InstanceTrashView
 
   return (
     <TrashView<TrashItem>
-      load={async () => (await window.electronAPI?.listTrashBuilds()) ?? []}
+      load={async () => (await window.electrobunAPI?.listTrashBuilds()) ?? []}
       row={(item) => ({
         key: item.trashName,
         name: item.originalName,
         icon: item.icon,
         fallbackIcon: item.modLoader
           ? <LoaderIcon loaderId={item.modLoader} className="w-5 h-5 text-primary/40" />
-          : <IconPackage className="w-5 h-5 text-primary/40" />,
+          : <IconColorSwatch className="w-5 h-5 text-primary/40" />,
         extra: (
           <p data-ui="instance-instance-trash-view-p-1" className="text-xs text-muted-foreground">
             {t("trash.deletedAt", { date: new Date(item.trashedAt).toLocaleDateString() })}
@@ -40,11 +40,11 @@ export function InstanceTrashView({ goToMyBuilds, onRestore }: InstanceTrashView
       })}
       onRestore={onRestore}
       onDeleteForever={async (item) => {
-        const result = await window.electronAPI?.deleteTrashItem(item.trashName)
+        const result = await window.electrobunAPI?.deleteTrashItem(item.trashName)
         if (result && !result.success) throw new Error(result.error ?? t("trash.error.delete"))
       }}
       onPurgeAll={async () => {
-        const result = await window.electronAPI?.purgeBuildTrash()
+        const result = await window.electrobunAPI?.purgeBuildTrash()
         if (result && !result.success) throw new Error(result.error ?? t("trash.error.purge"))
       }}
       afterRestore={goToMyBuilds}

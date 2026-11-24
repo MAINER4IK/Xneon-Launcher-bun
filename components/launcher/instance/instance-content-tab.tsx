@@ -1,4 +1,7 @@
-import { CONTENT_ENTER_DELAYED } from "../content-motion"
+import { useConfirmDialog } from "@/lib/use-confirm-dialog"
+import {readContentUi,saveContentUi} from "@/lib/content-ui-cache"
+import { isContentDownloadCancelled } from "@/lib/content-download"
+import { Checkbox } from "@/components/ui/checkbox"
 import { memo, useEffect, useMemo, useRef, useState, useDeferredValue, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { useActivityCenter } from "@/src/ActivityCenterContext"
@@ -81,7 +84,7 @@ interface InstanceContentTabProps {
   categories?: ModCategory[]
   modTotalPages?: number
   modFileInputRef: React.RefObject<HTMLInputElement | null>
-  onUploadFile: (file: File) => void
+  onUploadFile: (file: File) => void | Promise<void>
   modLoading: boolean
   modTotalHits: number
   modPage: number
@@ -92,9 +95,10 @@ interface InstanceContentTabProps {
   installingModSlug: string | null
   setInstallingModSlug: (slug: string | null) => void
   addModToBuild: (buildId: string, mod: ModSearchResult) => void
-  addContentToBuild: (buildId: string, type: "resourcepacks" | "shaders", mod: ModSearchResult) => void | Promise<void>
-  installContentToBuild: (mod: ModSearchResult, type: "resourcepacks" | "shaders", onPhase?: (phase: "resolving" | "confirm" | "downloading" | "deps" | null) => void) => void | Promise<void>
+  addContentToBuild: (buildId: string, type: "resourcepacks" | "shaders", mod: ModSearchResult, version?: ModVersion) => Promise<boolean>
+  installContentToBuild: (mod: ModSearchResult, type: "resourcepacks" | "shaders", onPhase?: (phase: "resolving" | "confirm" | "downloading" | "deps" | null) => void) => void | Promise<boolean | void>
   removeContentFromBuild: (buildId: string, type: "mods" | "resourcepacks" | "shaders", item: Build["mods"][number]) => Promise<boolean>
+  beginContentMutation: (buildId: string) => () => void
   installModToBuild: (mod: ModSearchResult, onPhase?: (phase: "resolving" | "confirm" | "downloading" | "deps" | null) => void) => void | Promise<void>
   setBuilds: React.Dispatch<React.SetStateAction<Build[]>>
   toggleItemEnabled: (buildId: string, type: "mods" | "resourcepacks" | "shaders", itemId: string) => void | Promise<boolean>
@@ -132,13 +136,15 @@ export const InstanceContentTab = memo(function InstanceContentTab({
   addContentToBuild,
   installContentToBuild,
   removeContentFromBuild,
+  beginContentMutation,
   installModToBuild,
   setBuilds,
   toggleItemEnabled,
   updateItemVersion,
 }: InstanceContentTabProps) {
   const { t } = useTranslation()
-  const { pushNotification } = useActivityCenter()
+  const { ask, dialog: confirmationDialog } = useConfirmDialog()
+  const { pushNotification, endContentInstall } = useActivityCenter()
   const installedItems = type === "mods" ? activeBuild.mods : type === "resourcepacks" ? activeBuild.resourcepacks : activeBuild.shaders
   const emptyStateText = type === "mods" ? t("builds.findMods") : type === "resourcepacks" ? t("builds.findResourcePacks") : t("builds.findShaders")
   /** Иконка типа контента — та же, что у вкладки: моды/ресурспаки/шейдеры. */
@@ -146,10 +152,134 @@ export const InstanceContentTab = memo(function InstanceContentTab({
   const notFoundText = type === "mods" ? t("builds.noModsFound") : type === "resourcepacks" ? t("builds.noResourcePacksFound") : t("builds.noShadersFound")
   const deferredResults = useDeferredValue(displayResults)
 
+  const [selectedProjects, setSelectedProjects] = useState<Record<string, ModSearchResult>>({})
+  const [batchInstalling, setBatchInstalling] = useState(false)
+  const batchRunning = useRef(false)
+  const batchGeneration = useRef(0)
+  const latestInstall = useRef({ installModToBuild, installContentToBuild, isInstalledFn })
+  latestInstall.current = { installModToBuild, installContentToBuild, isInstalledFn }
+  useEffect(() => {
+    setSelectedProjects({})
+    return () => { batchGeneration.current++ }
+  }, [activeBuild.id, type])
+  useEffect(() => {
+    setSelectedProjects(current => {
+      const remaining = Object.entries(current).filter(([, project]) => !isInstalledFn?.(project))
+      return remaining.length === Object.keys(current).length ? current : Object.fromEntries(remaining)
+    })
+  }, [installedItems, isInstalledFn])
+  const installSelected = async () => {
+    if (batchRunning.current || installingModSlug !== null) return
+    const projects = Object.values(selectedProjects)
+    if (isLocked && !await ask(t("buildDetail.lockedInstallConfirm", { name: projects.map(project => project.name).join(", ") }))) return
+    batchRunning.current = true
+    setBatchInstalling(true)
+    const finishMutation = beginContentMutation(activeBuild.id)
+    const generation = batchGeneration.current
+    try {
+      for (const project of projects) {
+        if (generation !== batchGeneration.current) break
+        if (latestInstall.current.isInstalledFn?.(project)) continue
+        setInstallingModSlug(contentProjectKey(project))
+        setInstallPhase("resolving")
+        setDownloadProgress(null)
+        try {
+          if (type === "mods") await latestInstall.current.installModToBuild(project, setInstallPhase)
+          else await latestInstall.current.installContentToBuild(project, type, setInstallPhase)
+        } catch (error) {
+          if (isContentDownloadCancelled(error)) { endContentInstall(); break }
+          pushNotification({ kind: "error", source: "install", title: project.name, message: error instanceof Error ? error.message : String(error) })
+        }
+      }
+    } finally {
+      finishMutation()
+      batchRunning.current = false
+      setBatchInstalling(false)
+      setInstallPhase(null)
+      setInstallingModSlug(null)
+    }
+  }
+
   const [removingSlug, setRemovingSlug] = useState<string | null>(null)
-  const [installedSearch, setInstalledSearch] = useState("")
+  const contentUiKey=activeBuild.id+":"+type
+  const [initialContentUi]=useState(()=>readContentUi(contentUiKey))
+  const [selectedInstalled, setSelectedInstalled] = useState<Set<string>>(()=>new Set(initialContentUi?.selected??[]))
+  const [batchRemoving, setBatchRemoving] = useState(false)
+  const [batchToggling, setBatchToggling] = useState(false)
+  const batchBusy = batchRemoving || batchToggling
+  const selectedHaveEnabled = installedItems.some(item => selectedInstalled.has(item.id) && item.enabled !== false)
+  const removingBatch = useRef(false)
+  const expectedInstalledCount=(activeBuild as Build & {modsCount?:number;resourcepacksCount?:number;shadersCount?:number})[type==="mods"?"modsCount":type==="resourcepacks"?"resourcepacksCount":"shadersCount"]??installedItems.length
+  useEffect(() => {
+    if(!installedItems.length&&expectedInstalledCount>0)return
+    setSelectedInstalled(current => {
+      const ids = new Set(installedItems.map(item => item.id))
+      const next = new Set([...current].filter(id => ids.has(id)))
+      return next.size === current.size ? current : next
+    })
+  }, [installedItems,expectedInstalledCount])
+  const [deleteConfirmation, setDeleteConfirmation] = useState<BuildMod[]>([])
+  useEffect(() => { setDeleteConfirmation([]) }, [activeBuild.id, type])
+  const removeSelected = async (items: BuildMod[]) => {
+    if (removingBatch.current || removingSlug !== null) return
+    if (!items.length) return
+    setDeleteConfirmation([])
+    removingBatch.current = true
+    setBatchRemoving(true)
+    const finishMutation = beginContentMutation(activeBuild.id)
+    try {
+      for (const item of items) {
+        setRemovingSlug(item.slug)
+        try {
+          const removed = await removeContentFromBuild(activeBuild.id, type, item)
+          if (!removed) throw new Error(t("addon.batch.deleteFailed", { name: item.name }))
+          setSelectedInstalled(current => { const next = new Set(current); next.delete(item.id); return next })
+        } catch (error) {
+          pushNotification({ kind: "error", source: "install", title: item.name, message: error instanceof Error ? error.message : String(error) })
+        }
+      }
+    } finally {
+      finishMutation()
+      removingBatch.current = false
+      setBatchRemoving(false)
+      setRemovingSlug(null)
+    }
+  }
+
+  const toggleSelected = async () => {
+    if (removingBatch.current || removingSlug !== null) return
+    const enabled = !selectedHaveEnabled
+    const items = installedItems.filter(item => selectedInstalled.has(item.id) && (item.enabled ?? true) !== enabled)
+    if (!items.length) return
+    removingBatch.current = true
+    setBatchToggling(true)
+    const finishMutation = beginContentMutation(activeBuild.id)
+    try {
+      for (const item of items) {
+        try {
+          const result = await toggleItemEnabled(activeBuild.id, type, item.id)
+          if (result === false) throw new Error(t("addon.batch.toggleFailed", { name: item.name }))
+        } catch (error) {
+          pushNotification({ kind: "error", source: "install", title: item.name, message: error instanceof Error ? error.message : String(error) })
+        }
+      }
+    } finally {
+      finishMutation()
+      removingBatch.current = false
+      setBatchToggling(false)
+    }
+  }
+
+  const [installedSearch, setInstalledSearch] = useState(initialContentUi?.search??"")
   /** Страница списка установленного контента (0-based, как в Pagination). */
-  const [installedPage, setInstalledPage] = useState(0)
+  const [installedPage, setInstalledPage] = useState(initialContentUi?.page??0)
+  const contentUiRef=useRef({search:installedSearch,page:installedPage,selected:[...selectedInstalled],scrollTop:initialContentUi?.scrollTop??0})
+  contentUiRef.current={search:installedSearch,page:installedPage,selected:[...selectedInstalled],scrollTop:contentUiRef.current.scrollTop}
+  const contentScrollNode=useRef<HTMLDivElement|null>(null)
+  const pendingContentScroll=useRef(initialContentUi?.scrollTop??null)
+  const restoreContentScroll=useCallback((node:HTMLDivElement|null)=>{contentScrollNode.current=node;if(node)node.scrollTop=contentUiRef.current.scrollTop},[])
+  useEffect(()=>{if(installedItems.length&&pendingContentScroll.current!==null&&contentScrollNode.current){contentScrollNode.current.scrollTop=pendingContentScroll.current;pendingContentScroll.current=null}},[installedItems.length])
+  useEffect(()=>()=>{saveContentUi(contentUiKey,contentUiRef.current)},[contentUiKey])
 
   // Перетаскивание файлов прямо в панель «Встановлено»: файл кладём в сборку как
   // есть — без проверок зависимостей и без запросов к API. Единственное, что
@@ -206,10 +336,10 @@ export const InstanceContentTab = memo(function InstanceContentTab({
 
     // Папку от файла отличает только main, поэтому расклад «подходит / не
     // подходит» спрашиваем у него, а не гадаем по расширению в рендерере.
-    const entries = files.map(file => ({ file, path: window.electronAPI?.getFilePath(file) ?? "" }))
+    const entries = await Promise.all(files.map(async file => ({ file, path: await window.electrobunAPI?.getFilePath(file) ?? "" })))
     const paths = entries.map(entry => entry.path).filter(Boolean)
     const classification = paths.length > 0
-      ? await window.electronAPI?.classifyDropPaths(paths, contentKind)
+      ? await window.electrobunAPI?.classifyDropPaths(paths, contentKind)
       : null
 
     if (!classification) {
@@ -262,8 +392,10 @@ export const InstanceContentTab = memo(function InstanceContentTab({
 
   // Новый поисковый запрос, другая сборка или другой тип контента — всегда
   // начинаем с первой страницы.
+  const lastInstalledSearch=useRef(deferredInstalledSearch)
   useEffect(() => {
-    setInstalledPage(0)
+    if(lastInstalledSearch.current!==deferredInstalledSearch)setInstalledPage(0)
+    lastInstalledSearch.current=deferredInstalledSearch
   }, [deferredInstalledSearch, activeBuild.id, type])
   const [versionPickerItem, setVersionPickerItem] = useState<BuildMod | null>(null)
   const [versionPickerVersions, setVersionPickerVersions] = useState<ModVersion[]>([])
@@ -272,42 +404,20 @@ export const InstanceContentTab = memo(function InstanceContentTab({
   const [updatingSlug, setUpdatingSlug] = useState<string | null>(null)
   const [cfChangelogs, setCfChangelogs] = useState<Record<string, string>>({})
   const [loadingPickerChangelog, setLoadingPickerChangelog] = useState(false)
-  const [downloadProgress, setDownloadProgress] = useState<{ fileName: string; current: number; total: number } | null>(null)
+  const [downloadProgress, setDownloadProgress] = useState<{ fileName: string; current: number; total: number; downloadId?: string; done?: boolean } | null>(null)
   // Этап установки: до байтов идёт сетевой этап (версии, зависимости) — его показываем словами.
+  const installAttemptRef = useRef<{ cancelled: boolean } | null>(null)
   const [installPhase, setInstallPhase] = useState<"resolving" | "confirm" | "downloading" | "deps" | null>(null)
   const contentType = type === "mods" ? "mod" : type === "resourcepacks" ? "resourcepack" : "shader"
   type ContentCategory = ModCategory & { source?: "modrinth" | "curseforge" }
   const filteredCategories = useMemo(() => (categories ?? []).filter(c => c.projectType === contentType) as ContentCategory[], [categories, contentType])
   const [updatesOpen, setUpdatesOpen] = useState(false)
   const [updatesCount, setUpdatesCount] = useState(0)
-  const [loaderRequirementReport, setLoaderRequirementReport] = useState<BuildLoaderRequirementReport | null>(null)
-  const [loaderWarningDismissed, setLoaderWarningDismissed] = useState(false)
-
-  // Требование мода к версии загрузчика есть только внутри JAR, поэтому оно
-  // читается из файлов сборки и сравнивается с выбранной версией загрузчика.
-  useEffect(() => {
-    if (type !== "mods" || !activeBuild.name || !activeBuild.loaderVersion) {
-      setLoaderRequirementReport(null)
-      return
-    }
-    setLoaderWarningDismissed(false)
-    let cancelled = false
-    window.electronAPI
-      ?.checkBuildLoaderRequirements(activeBuild.name, activeBuild.modLoader, activeBuild.loaderVersion)
-      .then(report => { if (!cancelled) setLoaderRequirementReport(report) })
-      .catch(() => { if (!cancelled) setLoaderRequirementReport(null) })
-    return () => { cancelled = true }
-  }, [type, activeBuild.name, activeBuild.modLoader, activeBuild.loaderVersion, activeBuild.mods.length])
-
-  const loaderIssues = useMemo(
-    () => (loaderRequirementReport?.issues ?? []).filter(issue => !issue.satisfied),
-    [loaderRequirementReport],
-  )
-
+  const [failedVersionIcon, setFailedVersionIcon] = useState<string | null>(null)
   const refreshUpdatesCount = useCallback(async () => {
     try {
       // Счётчики, а не весь кэш: полный ответ весит мегабайты (data-URL иконки).
-      const counts = await window.electronAPI?.getContentUpdatesCounts?.()
+      const counts = await window.electrobunAPI?.getContentUpdatesCounts?.()
       const entry = counts?.[activeBuild.id]
       const count = type === "mods"
         ? (entry?.mods ?? 0)
@@ -346,7 +456,7 @@ export const InstanceContentTab = memo(function InstanceContentTab({
 
     let cancelled = false
     setLoadingPickerChangelog(true)
-    void window.electronAPI?.modsCurseforgeChangelog(item.modId, fileId)
+    void window.electrobunAPI?.modsCurseforgeChangelog(item.modId, fileId)
       .then((text) => {
         if (cancelled) return
         setCfChangelogs(prev => ({ ...prev, [ver.id]: text || "" }))
@@ -358,7 +468,7 @@ export const InstanceContentTab = memo(function InstanceContentTab({
   }, [versionPickerItem, selectedPickerVersion, cfChangelogs])
 
   useEffect(() => {
-    const off = window.electronAPI?.onContentDownloadProgress?.((progress) => {
+    const off = window.electrobunAPI?.onContentDownloadProgress?.((progress) => {
       setDownloadProgress(progress)
     })
     return () => off?.()
@@ -369,7 +479,7 @@ export const InstanceContentTab = memo(function InstanceContentTab({
   }, [updatingSlug, installingModSlug])
 
   return (
-    <div key={type} data-ui="instance-instance-content-tab-div-2" data-component="instance-content-tab" className={`flex-1 min-h-0 flex flex-col gap-4 ${CONTENT_ENTER_DELAYED}`}>
+    <div key={type} data-ui="instance-instance-content-tab-div-2" data-component="instance-content-tab" className="flex-1 min-h-0 flex flex-col gap-4">
       {isLocked && (
         <div data-ui="instance-instance-content-tab-div-3" className="flex items-center gap-2.5 px-4 py-2.5 rounded-2xl border border-warning/20 bg-warning/5 text-xs text-warning/90">
           <IconLock className="w-4 h-4 shrink-0" />
@@ -439,76 +549,31 @@ export const InstanceContentTab = memo(function InstanceContentTab({
             ref={modFileInputRef}
             type="file"
             accept=".jar,.zip"
+            multiple
             className="hidden"
-            onChange={e => {
-              const file = e.target.files?.[0]
-              if (file) {
-                onUploadFile(file)
-                e.target.value = ""
-              }
+            onChange={async e => {
+              const files = Array.from(e.target.files ?? [])
+              e.currentTarget.value = ""
+              for (const file of files) await onUploadFile(file)
             }}
           />
         </div>
       </div>
 
       <div data-ui="instance-instance-content-tab-div-7" className="flex flex-1 min-h-0 flex-col gap-4">
-        {loaderIssues.length > 0 && !loaderWarningDismissed && (
-          <div data-ui="instance-instance-content-tab-div-8" className="shrink-0 rounded-2xl border border-warning/40 bg-warning/10 p-3">
-            <div data-ui="instance-instance-content-tab-div-9" className="flex items-start gap-2">
-              <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" strokeWidth={1.75} />
-              <div data-ui="instance-instance-content-tab-div-10" className="min-w-0 flex-1">
-                <p data-ui="instance-instance-content-tab-p-2" className="text-sm font-medium text-foreground">
-                  {t("builds.loaderVersionMismatch", {
-                    total: loaderIssues.length,
-                    loader: `${activeBuild.modLoader} ${activeBuild.loaderVersion}`,
-                  })}
-                </p>
-                <ul data-ui="instance-instance-content-tab-ul-2" className="mt-1.5 space-y-0.5">
-                  {loaderIssues.slice(0, 5).map(issue => (
-                    <li data-ui="instance-instance-content-tab-li-2" key={issue.fileName} className="truncate text-xs text-muted-foreground">
-                      <span data-ui="instance-instance-content-tab-span-5" className="text-foreground/90">{issue.modName || issue.fileName}</span>
-                      {" — "}
-                      {t("builds.loaderVersionRequired", { loader: issue.loaderId, requirement: issue.requirement })}
-                    </li>
-                  ))}
-                  {loaderIssues.length > 5 && (
-                    <li data-ui="instance-instance-content-tab-li-3" className="text-xs text-muted-foreground">
-                      {t("builds.loaderVersionMore", { more: loaderIssues.length - 5 })}
-                    </li>
-                  )}
-                </ul>
-              </div>
-              <button data-ui="instance-instance-content-tab-button-2"
-                type="button"
-                onClick={() => setLoaderWarningDismissed(true)}
-                className="rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground"
-                aria-label={t("servers.cancel")}
-              >
-                <IconX className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-        )}
-
         <div data-ui="instance-instance-content-tab-div-11" className="grid gap-3 min-h-0 xl:grid-cols-[minmax(0,520px)_minmax(0,1fr)]">
           <div data-ui="instance-instance-content-tab-div-12"
             className={cn(
               "relative flex flex-col min-h-0 rounded-2xl border bg-card/50 p-4 transition-colors",
-              dragActive ? "border-dashed border-primary bg-primary/5" : "border-border",
+              "border-border",
             )}
             onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
           >
-            {dragActive && (
-              <div data-ui="instance-instance-content-tab-div-13" className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center rounded-2xl bg-background/75 backdrop-blur-[1px]">
-                <IconUpload className="mb-2 h-6 w-6 text-primary" strokeWidth={1.75} />
-                <p data-ui="instance-instance-content-tab-p-3" className="text-sm font-medium text-foreground">{t("builds.dropToAdd")}</p>
-              </div>
-            )}
             <div data-ui="instance-instance-content-tab-div-14" className="mb-2 flex items-center justify-between gap-3 shrink-0">
-              <h3 data-ui="instance-instance-content-tab-h3-2" className="text-sm font-medium text-foreground">{t("builds.installed")}</h3>
+              <h3 data-ui="instance-instance-content-tab-h3-2" className="flex items-center gap-2 text-sm font-medium text-foreground"><IconCheck className="size-4 text-primary" strokeWidth={1.75} aria-hidden="true" />{t("builds.installed")}</h3>
               <div data-ui="instance-instance-content-tab-div-15" className="flex items-center gap-1.5">
                 <button data-ui="instance-instance-content-tab-button-3"
                   type="button"
@@ -558,27 +623,29 @@ export const InstanceContentTab = memo(function InstanceContentTab({
               </div>
             )}
 
-            <div data-ui="instance-instance-content-tab-div-17" className="flex-1 min-h-0 space-y-2 overflow-y-auto pr-1">
-              {installedItems.length === 0 ? (
+            <div data-ui="instance-instance-content-tab-div-17" ref={restoreContentScroll} onScroll={event=>{contentUiRef.current.scrollTop=event.currentTarget.scrollTop}} className="flex-1 min-h-0 space-y-2 overflow-y-auto pr-1">
+              {installedItems.length === 0 || dragActive ? (
                 <EmptyState
                   variant="empty"
-                  icon={typeIcon}
-                  title={emptyStateText}
-                  className="min-h-[180px] rounded-2xl border border-dashed border-border"
+                  icon={dragActive ? IconUpload : typeIcon}
+                  title={dragActive ? t("builds.dropToAdd") : emptyStateText}
+                  className={cn("min-h-[180px] rounded-2xl border border-dashed transition-colors", dragActive ? "border-primary bg-primary/5" : "border-border bg-transparent")}
                 />
               ) : filteredInstalled.length === 0 ? (
                 <EmptyState
                   compact
                   title={t("builds.searchInstalledNoMatch")}
-                  className="min-h-[120px] rounded-2xl border border-dashed border-border"
+                  className="min-h-[120px] rounded-none border-0 bg-transparent"
                 />
               ) : pagedInstalled.map((item) => {
                 const isEnabled = item.enabled ?? true
                 return (
-                <div data-ui="instance-instance-content-tab-div-18" key={item.id} className={`rounded-xl border bg-background p-3 transition-opacity ${isEnabled ? 'border-border' : 'border-border/50 opacity-55'}`}>
+                <div data-ui="instance-instance-content-tab-div-18" key={item.id} className={`rounded-xl border bg-card p-3 transition-opacity ${selectedInstalled.has(item.id) ? 'border-primary ring-1 ring-primary/25' : isEnabled ? 'border-border' : 'border-border/50 opacity-55'}`}>
                   <div data-ui="instance-instance-content-tab-div-19" className="flex items-start gap-3">
+                    <Checkbox className="mt-3" checked={selectedInstalled.has(item.id)} disabled={batchBusy || removingSlug !== null} aria-label={t("addon.batch.select", { name: item.name })} onCheckedChange={checked => setSelectedInstalled(current => { const next = new Set(current); if (checked === true) next.add(item.id); else next.delete(item.id); return next })} />
                     <button data-ui="instance-instance-content-tab-button-5"
                       type="button"
+                      disabled={batchBusy}
                       onClick={() => toggleItemEnabled(activeBuild.id, type, item.id)}
                       className={`mt-0.5 rounded-lg border p-2 transition-colors hover:bg-muted/80 ${isEnabled ? 'border-primary/40 text-primary' : 'border-border text-muted-foreground'}`}
                       aria-label={isEnabled ? t("common.disable") : t("common.enable")}
@@ -613,14 +680,14 @@ export const InstanceContentTab = memo(function InstanceContentTab({
                           setVersionPickerVersions([])
                           setVersionPickerLoading(true)
                           const fetchPromise = item.source === "modrinth" && item.projectId
-                            ? window.electronAPI?.modsModrinthVersions(item.projectId)
+                            ? window.electrobunAPI?.modsModrinthVersions(item.projectId)
                             : item.source === "curseforge" && item.modId
-                              ? window.electronAPI?.modsCurseforgeDetails(item.modId).then(r => r?.versions ?? [])
-                              : window.electronAPI?.modsModrinthVersions("", item.id)
+                              ? window.electrobunAPI?.modsCurseforgeDetails(item.modId).then(r => r?.versions ?? [])
+                              : window.electrobunAPI?.modsModrinthVersions("", item.id)
                           void Promise.resolve(fetchPromise).then(async versions => {
                             // При неполных или устаревших метаданных определяем проект по файлу.
                             if (!versions?.length && (item.projectId || item.modId)) {
-                              return await window.electronAPI?.modsModrinthVersions("", item.id)
+                              return await window.electrobunAPI?.modsModrinthVersions("", item.id)
                             }
                             return versions
                           }).then((versions) => {
@@ -630,7 +697,11 @@ export const InstanceContentTab = memo(function InstanceContentTab({
                             const requireLoader = type === "mods"
                             const compatible = list.filter(v => matchesBuildVersion(v, activeBuild, requireLoader))
                             const gameOnly = list.filter(v => matchesBuildVersion(v, activeBuild, false))
-                            const shown = compatible.length > 0 ? compatible : (gameOnly.length > 0 ? gameOnly : list)
+                             const installedVersion = list.find(v => isInstalledVersion(v, item, activeBuild.version))
+                             const shown = compatible.length > 0 ? [...compatible] : (requireLoader ? [] : [...gameOnly])
+                             // Установленная версия может быть для другой Minecraft:
+                             // всё равно показываем её с отметкой, а не теряем из списка.
+                             if (installedVersion && !shown.some(v => v.id === installedVersion.id)) shown.push(installedVersion)
                             setVersionPickerVersions(shown)
                             // Раскрываем changelog установленной версии сразу.
                             const current = shown.find(v => isInstalledVersion(v, item, activeBuild.version))
@@ -648,10 +719,12 @@ export const InstanceContentTab = memo(function InstanceContentTab({
                       </button>
                       <button data-ui="instance-instance-content-tab-button-7"
                         type="button"
-                        disabled={removingSlug === item.slug}
+                        disabled={batchBusy || removingSlug !== null}
                         onClick={() => {
                           setRemovingSlug(item.slug)
-                          void removeContentFromBuild(activeBuild.id, type, item).finally(() => setRemovingSlug(null))
+                          void removeContentFromBuild(activeBuild.id, type, item).then(removed => {
+                            if (!removed) pushNotification({ kind: "error", source: "install", title: t("common.errorTitle"), message: t("addon.batch.deleteFailed", { name: item.name }) })
+                          }).finally(() => setRemovingSlug(null))
                         }}
                         className="rounded-lg border border-border p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-60"
                         aria-label={t("common.delete")}
@@ -665,6 +738,33 @@ export const InstanceContentTab = memo(function InstanceContentTab({
               )})}
             </div>
 
+            {installedItems.length > 0 && (
+              <div className="mt-3 shrink-0 rounded-xl border border-border bg-card p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Checkbox disabled={batchBusy || removingSlug !== null || !filteredInstalled.length}
+                      checked={filteredInstalled.length > 0 && filteredInstalled.every(item => selectedInstalled.has(item.id)) ? true : filteredInstalled.some(item => selectedInstalled.has(item.id)) ? "indeterminate" : false}
+                      onCheckedChange={checked => setSelectedInstalled(current => { const next = new Set(current); for (const item of filteredInstalled) { if (checked === true) next.add(item.id); else next.delete(item.id) } return next })} />
+                    {t("addon.batch.selectAll")}
+                  </label>
+                  {selectedInstalled.size > 0 && <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{t("addon.batch.selected", { count: selectedInstalled.size })}</span>}
+                </div>
+                {selectedInstalled.size > 0 && (
+                  <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border pt-3">
+                    <button type="button" disabled={batchBusy || removingSlug !== null} onClick={() => void toggleSelected()}
+                      className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-border bg-muted/50 px-2 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50">
+                      {batchToggling ? <IconLoader2 className="size-4 shrink-0 animate-spin text-primary" /> : <IconPower className="size-4 shrink-0 text-primary" />}
+                      <span>{t(selectedHaveEnabled ? "addon.batch.disable" : "addon.batch.enable")}</span>
+                    </button>
+                    <button type="button" disabled={batchBusy || removingSlug !== null} onClick={() => setDeleteConfirmation(installedItems.filter(item => selectedInstalled.has(item.id)))}
+                      className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-destructive/30 bg-destructive/10 px-2 py-2 text-xs font-medium text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-50">
+                      {batchRemoving ? <IconLoader2 className="size-4 shrink-0 animate-spin" /> : <IconTrash className="size-4 shrink-0" />}
+                      <span>{t("addon.batch.delete")}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             <Pagination
               currentPage={installedPageSafe}
               totalPages={installedTotalPages}
@@ -681,6 +781,10 @@ export const InstanceContentTab = memo(function InstanceContentTab({
               )}
             </div>
 
+            {Object.keys(selectedProjects).length > 0 && <div className="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-xl border border-primary/25 bg-primary/5 p-2.5">
+              <span className="text-sm">{t("addon.batch.selected", { count: Object.keys(selectedProjects).length })}</span>
+              <div className="flex items-center gap-2"><button type="button" disabled={batchInstalling} onClick={() => setSelectedProjects({})} className="rounded-lg px-3 py-2 text-xs text-muted-foreground hover:bg-muted disabled:opacity-50">{t("addon.batch.clear")}</button><button type="button" disabled={batchInstalling || installingModSlug !== null} onClick={() => void installSelected()} className="flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground disabled:opacity-50">{batchInstalling ? <IconLoader2 className="size-4 animate-spin" /> : <IconDownload className="size-4" />}{t("addon.batch.install")}</button></div>
+            </div>}
             <div data-ui="instance-instance-content-tab-div-27" className="flex-1 min-h-0 min-w-0 overflow-y-auto pr-1 mt-2">
               {displayResults.length > 0 ? (
                 <div data-ui="instance-instance-content-tab-div-28" className="grid min-w-0 gap-2 pb-2">
@@ -689,19 +793,34 @@ export const InstanceContentTab = memo(function InstanceContentTab({
                     const isInstalling = installingModSlug === contentProjectKey(project)
                     // Проценты берём только после сетевого этапа: иначе на «поиске версии»
                     // показывался бы чужой прогресс от прошлой установки.
-                    const percent = isInstalling && installPhase !== "resolving" && downloadProgress && downloadProgress.total > 0
+                    const percent = isInstalling && downloadProgress && downloadProgress.total > 0
                       ? Math.min(100, Math.round((downloadProgress.current / downloadProgress.total) * 100))
                       : null
                     return (
                       <AddonRow
                         key={project.id}
                         project={project}
+                        selected={!!selectedProjects[contentProjectKey(project)]}
+                        selectionDisabled={batchInstalling}
+                        onSelectionChange={checked => setSelectedProjects(current => {
+                          const next = { ...current }
+                          if (checked) next[contentProjectKey(project)] = project
+                          else delete next[contentProjectKey(project)]
+                          return next
+                        })}
                         installed={installed}
                         installing={isInstalling}
                         percent={percent}
                         phase={isInstalling ? installPhase : null}
+                        onCancelDownload={isInstalling && (installPhase === "resolving" || (downloadProgress?.downloadId && !downloadProgress.done)) ? () => {
+                          if (installAttemptRef.current) installAttemptRef.current.cancelled = true
+                          if (downloadProgress?.downloadId && !downloadProgress.done) void window.electrobunAPI?.cancelContentDownload(downloadProgress.downloadId)
+                          setInstallPhase(null)
+                          setInstallingModSlug(null)
+                          endContentInstall()
+                        } : undefined}
                         showCategories={type === "mods"}
-                        installDisabled={installingModSlug !== null}
+                        installDisabled={batchInstalling || installingModSlug !== null}
                         installLabel={t("builds.add")}
                         projectKind={type === "mods" ? "mod" : type === "resourcepacks" ? "resourcepack" : "shader"}
                         confirmMessage={isLocked
@@ -709,16 +828,27 @@ export const InstanceContentTab = memo(function InstanceContentTab({
                           : undefined}
                         onDetails={() => openProjectModal(project, type === "mods" ? "mod" : type === "resourcepacks" ? "resourcepack" : "shader")}
                         onInstall={() => {
+                          const attempt = { cancelled: false }
+                          installAttemptRef.current = attempt
+                          const phaseChanged = (phase: "resolving" | "confirm" | "downloading" | "deps" | null) => {
+                            if (attempt.cancelled) throw new Error("CONTENT_DOWNLOAD_CANCELLED")
+                            setInstallPhase(phase)
+                          }
                           setInstallingModSlug(contentProjectKey(project))
                           setInstallPhase("resolving")
                           // Чужой прогресс от предыдущей загрузки не должен висеть на новой карточке.
                           setDownloadProgress(null)
                           const task = type === "mods"
-                            ? installModToBuild(project, setInstallPhase)
-                            : installContentToBuild(project, type, setInstallPhase)
-                          Promise.resolve(task).finally(() => {
+                            ? installModToBuild(project, phaseChanged)
+                            : installContentToBuild(project, type, phaseChanged)
+                          Promise.resolve(task).catch(error => {
+                            if (!isContentDownloadCancelled(error)) pushNotification({ kind: "error", source: "install", title: project.name, message: error instanceof Error ? error.message : String(error) })
+                            endContentInstall()
+                          }).finally(() => {
+                            if (installAttemptRef.current !== attempt || attempt.cancelled) return
+                            installAttemptRef.current = null
                             setInstallPhase(null)
-                            setTimeout(() => setInstallingModSlug(null), 500)
+                            setInstallingModSlug(null)
                           })
                         }}
                       />
@@ -728,12 +858,12 @@ export const InstanceContentTab = memo(function InstanceContentTab({
               ) : modLoading ? (
                 <Spinner />
               ) : (modSearch || (modCategories?.length ?? 0) > 0) ? (
-                <EmptyState title={notFoundText} className="h-full" />
+                <EmptyState title={notFoundText} className="h-full rounded-none border-0 bg-transparent" />
               ) : (
                 <EmptyState
                   title={t("addon.search.startHint")}
                   icon={IconSearch}
-                  className="h-full rounded-2xl border border-dashed border-border"
+                  className="h-full rounded-none border-0 bg-transparent"
                 />
               )}
             </div>
@@ -757,10 +887,10 @@ export const InstanceContentTab = memo(function InstanceContentTab({
             <div data-ui="instance-instance-content-tab-div-30" className="p-5 border-b border-border flex-shrink-0">
               <div data-ui="instance-instance-content-tab-div-31" className="flex items-center justify-between">
                 <div data-ui="instance-instance-content-tab-div-32">
-                  <h3 data-ui="instance-instance-content-tab-h3-4" className="flex items-center gap-2 text-lg font-bold text-foreground"><ModalTitleIcon><IconPuzzle className="h-4 w-4" strokeWidth={1.75} /></ModalTitleIcon>{t("addon.updateTitle", { name: versionPickerItem?.name })}</h3>
+                  <h3 data-ui="instance-instance-content-tab-h3-4" className="flex items-center gap-2 text-lg font-bold text-foreground">{versionPickerItem.icon_url && failedVersionIcon !== versionPickerItem.icon_url ? <img src={versionPickerItem.icon_url} alt="" className="h-9 w-9 shrink-0 rounded-lg object-cover" onError={() => setFailedVersionIcon(versionPickerItem.icon_url ?? null)} /> : <ModalTitleIcon><IconPuzzle className="h-4 w-4" strokeWidth={1.75} /></ModalTitleIcon>}{t("addon.updateTitle", { name: versionPickerItem?.name })}</h3>
                   <p data-ui="instance-instance-content-tab-p-4" className="text-sm text-muted-foreground mt-1">{t("addon.currentVersion", { version: versionPickerItem?.version })}</p>
                 </div>
-                <button data-ui="instance-instance-content-tab-button-8"
+                <button data-modal-close data-ui="instance-instance-content-tab-button-8"
                   onClick={() => { setVersionPickerItem(null); setSelectedPickerVersion(null) }}
                   className="p-2 rounded-lg border border-border bg-muted/60 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                 >
@@ -935,12 +1065,34 @@ export const InstanceContentTab = memo(function InstanceContentTab({
         </ModalLayer>
       )}
 
+      {confirmationDialog}
       <InstanceUpdatesDialog
         activeBuild={activeBuild}
+        contentType={type}
         open={updatesOpen}
         onOpenChange={setUpdatesOpen}
         updateItemVersion={updateItemVersion}
       />
+
+      <Dialog open={deleteConfirmation.length > 0} onOpenChange={open => { if (!open) setDeleteConfirmation([]) }}>
+        <DialogContent className="max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 pr-10">
+              <ModalTitleIcon><IconTrash className="h-4 w-4" strokeWidth={1.75} /></ModalTitleIcon>
+              {t("addon.batch.delete")}
+            </DialogTitle>
+            <DialogDescription>{t("addon.batch.confirmDelete", { count: deleteConfirmation.length })}</DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <button type="button" autoFocus onClick={() => setDeleteConfirmation([])} className="flex items-center gap-2 rounded-xl border border-border bg-muted px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/80">
+              <IconX className="h-4 w-4" strokeWidth={1.75} />{t("common.cancel")}
+            </button>
+            <button type="button" onClick={() => void removeSelected(deleteConfirmation)} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+              <IconTrash className="h-4 w-4" strokeWidth={1.75} />{t("addon.batch.delete")}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={rejectedEntries.length > 0} onOpenChange={open => { if (!open) setRejectedEntries([]) }}>
         <DialogContent data-window="instance-instance-content-tab-window-2" className="max-w-md">

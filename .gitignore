@@ -3,7 +3,7 @@ node_modules/
 
 # Build output
 dist/
-dist-electron/
+dist-electrobun/
 release/
 
 # Local sub-package build outputs (TS build artifacts, can be regenerated)
@@ -28,17 +28,40 @@ desktop.ini
 
 # Environment & secrets
 .env
-.env*.local
-.env.production
-.env.development
-electron/main/cloud/credentials.generated.ts
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+electrobun/main/cloud/credentials.generated.ts
+
+# Ключи, сертификаты и токены — только локально
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.ppk
+id_rsa*
+id_dsa*
+id_ecdsa*
+id_ed25519*
+*.token
+.netrc
+secrets.json
 
 # Cache
 .codex/
 .xneonlauncher/
-.pnpm-store/
 *.tsbuildinfo
 tsconfig.tsbuildinfo
+# Локальные результаты сборок и измерений
+/.cache/
+/.local-research/
+/benchmarks/
+# Ручные резервные архивы исходников/тестов — не production inputs
+/scripts/*.rar
+/tests/*.rar
 
 # Logs
 *.log
@@ -115,6 +138,8 @@ restart-*.js
 ssh-check.js
 test-*.js
 test-*.mjs
+!/scripts/test-channel-artifacts.mjs
+!/scripts/test-parser.mjs
 # Скачанные артефакты (authlib-injector.jar и прочие) в репозиторий не кладём.
 *.jar
 update-*.js
@@ -130,6 +155,14 @@ electron-dedup-audit.md
 .dsh-*
 launcher-screenshot.png
 
+# Локальные артефакты аудитов и прогонов: вывод регенерируется, не версионируется
+/test-audit-cleanup/
+/test-value-audit/
+/test-results/
+/coverage/
+coverage.out
+*.junit.xml
+
 # Локальное окружение сервера новостей и Python-кэш
 .venv/
 __pycache__/
@@ -137,3 +170,17 @@ __pycache__/
 
 # Локальные отчёты и журналы QA-аудита
 /qa-reports/
+/.share-data/
+/infrastructure/xnlc-share/.env
+/.wrangler/
+/infrastructure/xnlc-share/.wrangler/
+
+# Electrobun
+/.hutch/
+/dist-workers/
+/build-electrobun/
+/release-electrobun/
+/.migration-node-modules/
+/.cottontail-tmp/
+
+/dist-electrobun-tests/

@@ -1,3 +1,4 @@
+import { filesFromTransfer, attachmentImageType } from "@/lib/agent-transfer-files"
 import { CONTENT_ENTER_DELAYED, useContentEnter } from "../content-motion"
 import { lazy, Suspense, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -18,13 +19,10 @@ import { ComposerControls } from "./composer-controls"
 import { answerAgentApproval, answerAgentQuestion, archiveAgentChat, attachToAgent, deleteAgentChat, initializeAgent, newAgentChat, removeAgentAttachment, selectAgentChat, sendAgentMessage, setAgentDraft, stopAgent, refreshAgentConfig, useAgentState } from "./store"
 import { AgentEntityIcon } from "./entity-icon"
 import { AgentPlan } from "./agent-plan"
-import { EntityIcon } from "../instance/entity-icon"
-import { LoaderIcon } from "../instance/loader-icon"
 import { LOADER_SVG_ICONS } from "../instance/loader-icons"
-import { CategoryBadge } from "../instance/category-badge"
 import { SourceMark } from "../source-mark"
 import { projectPageUrl, type ProjectKind } from "@/lib/project-links"
-import { IconDownload, IconExternalLink, IconColorSwatch, IconPuzzle, IconPhoto, IconSparkles, IconDatabase, IconServer, IconCircle, IconBolt, IconPlant2, IconCpu, IconCompass, IconWand, IconBrandMinecraft } from "@tabler/icons-react"
+import { IconDownload, IconExternalLink } from "@tabler/icons-react"
 import "./agent.css"
 const AgentProjectDetailsModal = lazy(() => import("./project-details-modal"))
 
@@ -50,74 +48,36 @@ function UserAvatar() {
   </div>
 }
 
-function QuestionOptionIcon({ option, question, builds }: { option: string; question: string; builds: DbBuildLight[] }) {
-  const [failedIcon, setFailedIcon] = useState<string | null>(null)
-  const direction = `${option} ${question}`.toLocaleLowerCase()
-  const versionQuestion = /minecraft/.test(question.toLocaleLowerCase()) && /верс|version/.test(question.toLocaleLowerCase())
-  const minecraftVersion = /^\s*(?:v)?\d+\.\d+(?:\.\d+)?(?:[- ]?(?:pre|rc)\s*\d+)?(?=$|[\s(])/i.test(option)
-  const otherVersion = /другая версия|other version|different version/i.test(option)
-  if (versionQuestion && (minecraftVersion || otherVersion)) return <IconBrandMinecraft size={18} strokeWidth={1.8} className="agent-question-option-icon text-primary" aria-hidden="true" />
-  if (minecraftVersion) return null
-  if (/modpack|модпак/.test(direction)) {
-    const label = option.toLocaleLowerCase()
-    const category = /optim|оптимизац|график|graphics/.test(label) ? { names: ["optimization", "visuals", "graphics"], Icon: IconBolt }
-      : /vanilla|ванилл|удобств|quality.?of.?life|\bqol\b/.test(label) ? { names: ["vanilla-like", "utility", "game-mechanics"], Icon: IconPlant2 }
-      : /adventure|приключ|исследован|exploration/.test(label) ? { names: ["adventure", "worldgen"], Icon: IconCompass }
-      : /\brpg\b|рпг/.test(label) ? { names: ["adventure", "rpg"], Icon: IconCompass }
-      : /techn|техник|механизм|automat|автоматизац/.test(label) ? { names: ["technology", "game-mechanics", "utility"], Icon: IconCpu }
-      : /magic|магия|fantasy|фэнтез|фентез/.test(label) ? { names: ["magic", "fantasy"], Icon: IconWand }
-      : /hardcore|хардкор/.test(label) ? { names: ["challenging", "survival"], Icon: IconBolt }
-      : /survival|выжив/.test(label) ? { names: ["survival", "challenging"], Icon: IconPlant2 }
-      : null
-    if (category) return <CategoryBadge name={category.names} iconOnly fallbackIcon={<category.Icon size={18} strokeWidth={1.8} aria-hidden="true" />} />
-  }
-  // Пояснения и составные подписи («Vanilla (ванильный)», «Paper / Spigot»)
-  // сохраняют иконку первого указанного загрузчика из общего реестра.
-  const loaderToken = option.trim().toLocaleLowerCase().match(/^([a-z]+)(?=$|[\s(/])/)?.[1]
-  const loaderAliases: Record<string, string> = {
-    neoforged: "neoforge",
-    spongevanilla: "sponge",
-    spongeforge: "sponge",
-    spongeneo: "sponge",
-  }
-  const loaderId = loaderToken && (loaderAliases[loaderToken] ?? loaderToken)
-  const loader = loaderId && Object.hasOwn(LOADER_SVG_ICONS, loaderId) ? loaderId : undefined
-  if (loader) return <span className="agent-question-option-icon flex h-6 w-6 shrink-0 items-center justify-center" aria-hidden="true"><LoaderIcon loaderId={loader} className="h-5 w-5 text-primary" /></span>
-  const normalize = (value: string) => value.trim().toLocaleLowerCase().replace(/\s+/g, " ")
-  const matches = builds.filter(build => [build.id, build.name, `${build.name} (${build.version})`].some(value => normalize(value) === normalize(option)))
-  const build = matches.length === 1 ? matches[0] : undefined
-  if (build) return <span className="agent-question-option-icon h-6 w-6 overflow-hidden rounded flex items-center justify-center" aria-hidden="true">
-    {build.icon && failedIcon !== build.icon
-      ? <EntityIcon src={build.icon} className="h-full w-full text-primary object-cover" imgClassName="h-full w-full object-cover" onImgError={() => setFailedIcon(build.icon)} />
-      : <LoaderIcon loaderId={build.modLoader || "vanilla"} className="h-5 w-5 text-primary" />}
-  </span>
-  const text = option.toLocaleLowerCase()
-  const Icon = /shader|шейдер|шэйдер/.test(text) ? IconSparkles
-    : /resource.?pack|texture|ресурс.?пак|текстур/.test(text) ? IconPhoto
-    : /data.?pack|дата.?пак/.test(text) ? IconDatabase
-    : /\bmods?\b|моды|моді|моди|геймплей|qol/.test(text) ? IconPuzzle
-    : /server|сервер/.test(text) ? IconServer
-    : /build|modpack|instance|сборк|збірк|сборок/.test(text + " " + question.toLocaleLowerCase()) ? IconColorSwatch
-    : IconCircle
-  return <Icon size={18} strokeWidth={1.75} className="agent-question-option-icon text-primary" aria-hidden="true" />
-}
-
 function AgentQuestion({ item }: { item: AgentTimelineItem }) {
   const { t } = useTranslation()
   const state = useAgentState()
   const [answer, setAnswer] = useState("")
   const [localSubmitted, setLocalSubmitted] = useState("")
   const [expanded, setExpanded] = useState(false)
-  const [builds, setBuilds] = useState<DbBuildLight[]>([])
-  useEffect(() => {
-    let cancelled = false
-    void window.electronAPI?.loadBuildsLight().then(value => {
-      if (!cancelled) setBuilds(value)
-    }).catch(() => {})
-    return () => { cancelled = true }
-  }, [item.id])
+  const [optionEntities, setOptionEntities] = useState<Record<string, { icon?: string; kind: "build" | "server"; loader?: string }>>({})
   let question = "", options: string[] = [], submitted = ""
   try { const input = JSON.parse(item.input || "{}"); question = String(input.question || ""); options = Array.isArray(input.options) ? input.options.filter((value: unknown) => typeof value === "string").slice(0, 6) : [] } catch { /* Старый чат может содержать некорректный вызов. */ }
+  const optionsKey = options.join("\u0000")
+  useEffect(() => {
+    let active = true
+    const labels = optionsKey.split("\u0000").filter(Boolean)
+    if (!labels.length || !window.electrobunAPI) { setOptionEntities({}); return }
+    void Promise.all([window.electrobunAPI.loadBuildsLight(), window.electrobunAPI.mcServerList()]).then(([builds, servers]) => {
+      if (!active) return
+      const normalize = (value: string) => value.trim().toLocaleLowerCase()
+      const matchesLabel = (name: string, key: string) => key === normalize(name) || key.startsWith(`${normalize(name)} (`)
+      const entities: typeof optionEntities = {}
+      for (const label of labels) {
+        const key = normalize(label)
+        const build = builds.find(candidate => matchesLabel(candidate.name, key))
+        if (build) { entities[key] = { icon: build.icon, kind: "build", loader: build.modLoader }; continue }
+        const server = servers.find(candidate => matchesLabel(candidate.name, key))
+        if (server) entities[key] = { icon: server.icon, kind: "server", loader: server.modloader }
+      }
+      setOptionEntities(entities)
+    }).catch(() => { if (active) setOptionEntities({}) })
+    return () => { active = false }
+  }, [optionsKey])
   try { submitted = String(JSON.parse(item.output || "{}").answer || "") } catch { /* Ответ ещё не получен. */ }
   submitted = localSubmitted || submitted
   const pending = state.questionId === item.id && !state.stopping
@@ -140,7 +100,7 @@ function AgentQuestion({ item }: { item: AgentTimelineItem }) {
       {resolved && <button type="button" className="agent-question-collapse" aria-expanded={true} aria-label={t("agent.question.collapse")} onClick={() => setExpanded(false)}><IconChevronUp size={15} /></button>}
     </div>
     <h3>{question}</h3>
-    {!!options.length && <div className="agent-question-options">{options.map(option => <button key={option} type="button" disabled={!pending} aria-pressed={submitted === option} onClick={() => submitAnswer(option)}><QuestionOptionIcon option={option} question={question} builds={builds} /><span className="agent-question-option-text">{option}</span>{submitted === option && <IconCheck size={15} className="shrink-0" aria-hidden="true" />}</button>)}</div>}
+    {!!options.length && <div className="agent-question-options">{options.map(option => { const entity = optionEntities[option.trim().toLocaleLowerCase()]; return <button key={option} type="button" disabled={!pending} aria-pressed={submitted === option} onClick={() => submitAnswer(option)}>{entity && <AgentEntityIcon src={entity.icon} kind={entity.kind} loader={entity.loader} name={option} className={cn("agent-question-option-icon", entity.icon && "agent-question-option-icon-custom")} />}<span className="agent-question-option-text">{option}</span>{submitted === option && <IconCheck size={15} className="shrink-0" aria-hidden="true" />}</button> })}</div>}
     {pending ? <form onSubmit={event => { event.preventDefault(); submitAnswer(answer) }} className="agent-question-form"><input value={answer} onChange={event => setAnswer(event.target.value)} maxLength={6000} aria-label={t("agent.question.answer")} placeholder={t("agent.question.answer")} /><button type="submit" className="agent-primary" disabled={!answer.trim()}>{t("agent.question.submit")}</button></form> : <p className="agent-question-result">{submitted || t("agent.question.cancelled")}</p>}
   </section>
 }
@@ -197,7 +157,7 @@ function ToolActionDescription({ item, project }: { item: AgentTimelineItem; pro
   useEffect(() => {
     let cancelled = false
     setBuild(undefined)
-    if (buildId) void window.electronAPI?.loadBuildsLight().then(builds => { if (!cancelled) setBuild(builds.find(candidate => candidate.id === buildId)) }).catch(() => {})
+    if (buildId) void window.electrobunAPI?.loadBuildsLight().then(builds => { if (!cancelled) setBuild(builds.find(candidate => candidate.id === buildId)) }).catch(() => {})
     return () => { cancelled = true }
   }, [buildId])
   return <div className="space-y-2 text-xs">
@@ -207,6 +167,26 @@ function ToolActionDescription({ item, project }: { item: AgentTimelineItem; pro
     </div>}
     {item.toolName === "install_content" && <p className="text-muted-foreground">{t("agent.action.installDescription")}</p>}
     {build && <p className="text-muted-foreground">{t("agent.action.targetBuild", { name: build.name, version: build.version })}</p>}
+  </div>
+}
+
+function AgentCodeBlock({ children, technical = false, className }: { children?: React.ReactNode; technical?: boolean; className?: string }) {
+  const { t } = useTranslation()
+  const codeRef = useRef<HTMLPreElement>(null)
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle")
+  useEffect(() => {
+    if (copyState === "idle") return
+    const timer = setTimeout(() => setCopyState("idle"), 2000)
+    return () => clearTimeout(timer)
+  }, [copyState])
+  const label = t(copyState === "copied" ? "ai.copied" : copyState === "error" ? technical ? "agent.copyTextFailed" : "agent.copyCodeFailed" : technical ? "ai.copyResult" : "agent.copyCode")
+  return <div className="agent-code-block">
+    <pre ref={codeRef} className={className}>{children}</pre>
+    <button type="button" className="agent-code-copy" title={label} aria-label={label} onClick={() => {
+      const value = codeRef.current?.textContent ?? ""
+      void navigator.clipboard.writeText(technical ? value : value.replace(/\n$/, "")).then(() => setCopyState("copied"), () => setCopyState("error"))
+    }}>{copyState === "copied" ? <IconCheck size={15} aria-hidden="true" /> : copyState === "error" ? <IconAlertTriangle size={15} aria-hidden="true" /> : <IconCopy size={15} aria-hidden="true" />}</button>
+    <span className="sr-only" role="status">{copyState === "idle" ? "" : label}</span>
   </div>
 }
 
@@ -226,15 +206,16 @@ function TimelineItem({ item, timeline, onPreview, pending, context = [], projec
       </summary>
       <div className="mt-3 space-y-2">
         <ToolActionDescription item={item} project={project} />
-        <details><summary className="cursor-pointer text-[11px] text-muted-foreground">{t("agent.action.technicalDetails")}</summary><pre className="agent-json mt-2">{(() => { try { return JSON.stringify(JSON.parse(item.input || "{}"), null, 2) } catch { return item.input } })()}</pre></details>
-        {item.output && <details><summary className="cursor-pointer text-xs text-muted-foreground">{t("agent.result")}</summary><pre className="agent-json mt-2">{item.output}</pre></details>}
+        <details><summary className="cursor-pointer text-[11px] text-muted-foreground">{t("agent.action.technicalDetails")}</summary><AgentCodeBlock technical className="agent-json">{(() => { try { return JSON.stringify(JSON.parse(item.input || "{}"), null, 2) } catch { return item.input } })()}</AgentCodeBlock></details>
+        {item.output && <details><summary className="cursor-pointer text-xs text-muted-foreground">{t("agent.result")}</summary><AgentCodeBlock technical className="agent-json">{item.output}</AgentCodeBlock></details>}
       </div>
       {item.status === "done" && <ProjectResults item={item} />}
+      {item.status === "done" && <WebResults item={item} />}
     </details>
     {item.status === "running" && <AgentToolProgress itemId={item.id} />}
     {pending && <div className="mt-3 flex items-center justify-end gap-2 border-t border-border/50 pt-3">
-      <button className="agent-secondary" type="button" onClick={() => answerAgentApproval(false)}>{t("agent.deny")}</button>
-      <button className="agent-primary" type="button" onClick={() => answerAgentApproval(true)}><IconCheck size={14} />{t("agent.allow")}</button>
+      <button className="agent-secondary" type="button" onClick={() => answerAgentApproval(item.id, false)}><IconX size={14} aria-hidden="true" />{t("agent.deny")}</button>
+      <button className="agent-primary" type="button" onClick={() => answerAgentApproval(item.id, true)}><IconCheck size={14} />{t("agent.allow")}</button>
     </div>}
   </div>
   if (item.kind === "error" || item.kind === "stopped") return <div className={cn("text-xs px-3 py-2 rounded-lg", item.kind === "error" ? "bg-destructive/10 text-destructive" : "text-muted-foreground")} role={item.kind === "error" ? "alert" : undefined}>{item.text}</div>
@@ -248,8 +229,9 @@ function TimelineItem({ item, timeline, onPreview, pending, context = [], projec
       {item.kind === "assistant" && !projects.length && !!context.length && <AttachedProjectCards attachments={context} />}
       {item.kind === "user" ? <div className="agent-user-bubble whitespace-pre-wrap">{item.text}</div> : <div className="agent-markdown">
         {item.text ? sections.map((section, index) => <div key={index} className="agent-project-section">{section.project && <ProjectCards projects={[section.project]} limit={1} />}<ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={{
-          a: ({ href, children }) => <a href={href} onClick={event => { event.preventDefault(); if (href && /^https?:\/\//.test(href)) void window.electronAPI?.openExternal(href) }}>{children}</a>,
+          a: ({ href, children }) => <a href={href} onClick={event => { event.preventDefault(); if (href && /^https?:\/\//.test(href)) void window.electrobunAPI?.openExternal(href) }}>{children}</a>,
           img: ({ alt }) => cardNames.length ? null : <span className="text-muted-foreground">{alt}</span>,
+          pre: ({ children }) => <AgentCodeBlock>{children}</AgentCodeBlock>,
         }}>{section.text}</ReactMarkdown></div>) : <span className="inline-flex items-center gap-2 text-muted-foreground"><IconLoader2 size={15} className="animate-spin" />{t("agent.thinking")}</span>}
         {item.status === "running" && item.text && <span className="agent-cursor" />}
       </div>}
@@ -376,11 +358,11 @@ function ProjectLookupGroup({ items, timeline }: { items: AgentTimelineItem[]; t
       {items.filter(item => !["get_project", "search_projects"].includes(item.toolName || "") && !(projects.length && ["get_project_versions", "install_content"].includes(item.toolName || "") && item.status === "done")).map(item => <details key={item.id} className="rounded-lg border border-border/60 px-3 py-2">
         <summary className="cursor-pointer text-xs text-muted-foreground">{requestLabel(item)}</summary>
         <div className="mt-2 space-y-2">
-          <pre className="agent-json">{(() => { try { return JSON.stringify(JSON.parse(item.input || "{}"), null, 2) } catch { return item.input || "" } })()}</pre>
-          {item.output && <pre className="agent-json">{item.output}</pre>}
+          <AgentCodeBlock technical className="agent-json">{(() => { try { return JSON.stringify(JSON.parse(item.input || "{}"), null, 2) } catch { return item.input || "" } })()}</AgentCodeBlock>
+          {item.output && <AgentCodeBlock technical className="agent-json">{item.output}</AgentCodeBlock>}
         </div>
       </details>)}
-      {items.filter(item => item.status === "error" || item.status === "denied").map(item => <pre key={item.id} className="agent-json">{item.output || item.text}</pre>)}
+      {items.filter(item => item.status === "error" || item.status === "denied").map(item => <AgentCodeBlock key={item.id} technical className="agent-json">{item.output || item.text}</AgentCodeBlock>)}
     </div>
   </details>
 }
@@ -393,6 +375,44 @@ function ProjectResults({ item }: { item: AgentTimelineItem }) {
     projects = item.toolName === "search_projects" && Array.isArray(output.results) ? output.results : [output]
   } catch { return null }
   return <ProjectCards projects={projects} />
+}
+
+/** Результаты web_search и web_fetch: заголовок, источник и ссылки без сырого JSON. */
+function WebResults({ item }: { item: AgentTimelineItem }) {
+  const { t } = useTranslation()
+  if (!["web_search", "web_fetch"].includes(item.toolName || "") || !item.output) return null
+  let data: Record<string, unknown>
+  try {
+    const parsed: unknown = JSON.parse(item.output)
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null
+    data = parsed as Record<string, unknown>
+  } catch { return null }
+  if (typeof data.error === "string" && data.error) return <p className="text-xs text-destructive" role="alert">{data.error}</p>
+  const open = (value: unknown) => { if (typeof value === "string" && /^https?:\/\//.test(value)) void window.electrobunAPI?.openExternal(value) }
+  const truncated = data.truncated === true && <p className="text-[11px] text-muted-foreground">{t("agent.web.truncated")}</p>
+  if (item.toolName === "web_search") {
+    const results = Array.isArray(data.results) ? (data.results as Array<Record<string, unknown>>).filter(entry => entry && typeof entry.url === "string").slice(0, 10) : []
+    return <div className="space-y-1.5">
+      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{t("agent.web.results")}</p>
+      {results.length === 0 && <p className="text-xs text-muted-foreground">{t("agent.noResults")}</p>}
+      {results.map((entry, index) => <div key={`${entry.url}-${index}`} className="rounded-lg border border-border/60 px-3 py-2">
+        <button type="button" className="text-left text-sm font-medium hover:underline" onClick={() => open(entry.url)}>{String(entry.title || entry.url)}</button>
+        <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{t("agent.web.source")}: {String(entry.source || entry.url)}</p>
+        {!!entry.description && <p className="mt-1 text-xs text-muted-foreground">{String(entry.description)}</p>}
+      </div>)}
+      {truncated}
+    </div>
+  }
+  const finalUrl = String(data.finalUrl || data.url || "")
+  const links = Array.isArray(data.links) ? (data.links as Array<Record<string, unknown>>).filter(entry => entry && typeof entry.url === "string").slice(0, 8) : []
+  return <div className="space-y-1">
+    <button type="button" className="text-left text-sm font-medium hover:underline" onClick={() => open(finalUrl)}>{String(data.title || finalUrl)}</button>
+    <p className="truncate text-[11px] text-muted-foreground">HTTP {String(data.status ?? "")} · {String(data.contentType || "")} · {finalUrl}</p>
+    {truncated}
+    {links.length > 0 && <details><summary className="cursor-pointer text-[11px] text-muted-foreground">{t("agent.web.links")} · {links.length}</summary>
+      <ul className="mt-1 space-y-0.5">{links.map((entry, index) => <li key={`${entry.url}-${index}`} className="truncate"><button type="button" className="text-xs text-primary hover:underline" onClick={() => open(entry.url)}>{String(entry.text || entry.url)}</button></li>)}</ul>
+    </details>}
+  </div>
 }
 
 function ProjectCards({ projects, limit = 4 }: { projects: Array<Record<string, unknown>>; limit?: number }) {
@@ -408,7 +428,7 @@ function ProjectCards({ projects, limit = 4 }: { projects: Array<Record<string, 
       <div className="agent-project-heading">
         <AgentEntityIcon src={typeof project.iconUrl === "string" ? project.iconUrl : undefined} kind={kind} name={String(project.name)} className="agent-project-image" />
         <div className="min-w-0 flex-1"><button type="button" className="agent-project-title" title={t("builds.details")} disabled={!remote} onClick={() => setDetails(project)}>{String(project.name)}</button><span className="agent-project-provider"><SourceMark source={String(project.source)} />{project.source === "modrinth" ? "Modrinth" : project.source === "curseforge" ? "CurseForge" : project.source === "ftb" ? "FTB" : t(`agent.attach.${kind}`)}{typeof downloads === "number" && <span><IconDownload size={12} />{new Intl.NumberFormat(i18n.language, { notation: "compact" }).format(downloads)}</span>}</span></div>
-        {url && <button type="button" className="agent-icon-button" title={t("agent.openProject")} aria-label={t("agent.openProject")} onClick={() => void window.electronAPI?.openExternal(url)}><IconExternalLink size={16} /></button>}
+        {url && <button type="button" className="agent-icon-button" title={t("agent.openProject")} aria-label={t("agent.openProject")} onClick={() => void window.electrobunAPI?.openExternal(url)}><IconExternalLink size={16} /></button>}
       </div>
       {(typeof project.version === "string" || typeof project.buildName === "string") && <div className="agent-project-tags">{typeof project.version === "string" && <span>{project.version}</span>}{typeof project.buildName === "string" && <span>{project.buildName}</span>}</div>}
       {typeof project.summary === "string" && project.summary.trim() && <p className="agent-project-summary">{project.summary}</p>}
@@ -427,8 +447,8 @@ function AttachedProjectCards({ attachments }: { attachments: AgentAttachment[] 
     setProjects(local)
     void Promise.all(local.map(async project => {
       const id = project.source === "curseforge" ? project.modId || project.projectId : project.projectId
-      if (!window.electronAPI || !id || !["modrinth", "curseforge", "ftb"].includes(String(project.source))) return project
-      try { return { ...project, ...await getAgentProject(window.electronAPI, String(project.source), String(id)), version: project.version, buildName: project.buildName, attachmentId: project.attachmentId, contentType: project.contentType } } catch { return project }
+      if (!window.electrobunAPI || !id || !["modrinth", "curseforge", "ftb"].includes(String(project.source))) return project
+      try { return { ...project, ...await getAgentProject(window.electrobunAPI, String(project.source), String(id)), version: project.version, buildName: project.buildName, attachmentId: project.attachmentId, contentType: project.contentType } } catch { return project }
     })).then(items => { if (!cancelled) setProjects(items) })
     return () => { cancelled = true }
   }, [attachments])
@@ -450,13 +470,15 @@ export function AgentPage() {
   const [config, setConfig] = useState<{ ready: boolean; model: string } | null>(null)
   const [modelSaving, setModelSaving] = useState(false)
   const [localError, setLocalError] = useState("")
+  const [fileDragActive, setFileDragActive] = useState(false)
+  const fileDragDepth = useRef(0)
   const fileInput = useRef<HTMLInputElement>(null)
   const messages = useRef<HTMLDivElement>(null)
   const atBottom = useRef(true)
   const composer = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
     void initializeAgent()
-    const refresh = () => { void refreshAgentConfig().then(value => { if (value) setConfig({ ready: !!value.apiKey || value.protocol === "ollama" || /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(value.endpoint), model: value.model }) }).catch(error => setLocalError(String(error))) }
+    const refresh = () => { void refreshAgentConfig().then(value => { if (value) setConfig({ ready: value.hasApiKey || value.protocol === "ollama" || /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(value.endpoint), model: value.model }) }).catch(error => setLocalError(String(error))) }
     refresh()
     const pickFiles = () => fileInput.current?.click()
     window.addEventListener("launcher:agent-pick-files", pickFiles)
@@ -468,12 +490,15 @@ export function AgentPage() {
   useEffect(() => { if (composer.current) { composer.current.style.height = "auto"; composer.current.style.height = `${Math.min(composer.current.scrollHeight, 160)}px` } }, [chat?.draft])
   const readFiles = async (files: FileList | File[]) => {
     setLocalError("")
+    if (!files.length) return
+    if (!chat) await newAgentChat()
     for (const file of Array.from(files)) {
-      if (/^image\/(png|jpeg|webp|gif)$/.test(file.type)) {
+      const imageType = attachmentImageType(file)
+      if (imageType) {
         if (!state.config?.models?.find(item => item.id === state.config?.model)?.supportsImages) { setLocalError(t("agent.imageUnsupported")); continue }
         if (file.size > 2_000_000) { setLocalError(t("agent.imageTooLarge")); continue }
         try {
-          const imageUrl = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(file) })
+          const imageUrl = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(file.type === imageType ? file : new Blob([file], { type: imageType })) })
           attachToAgent({ id: crypto.randomUUID(), kind: "file", name: file.name, content: t("agent.imageAttachment"), imageUrl, iconUrl: imageUrl })
         } catch (error) { setLocalError(String(error)) }
         continue
@@ -493,7 +518,7 @@ export function AgentPage() {
   }
   const settings = () => window.dispatchEvent(new CustomEvent("launcher:open-settings", { detail: { tab: "ai" } }))
   const selectModel = async (model: string) => {
-    const api = window.electronAPI
+    const api = window.electrobunAPI
     if (!api) throw new Error("Electron API unavailable")
     setModelSaving(true)
     try {
@@ -505,7 +530,22 @@ export function AgentPage() {
     } finally { setModelSaving(false) }
   }
   const guarded = (action: () => Promise<unknown>) => { void action().catch(error => setLocalError(String(error))) }
-  return <div className="agent-page" id="agent-page" data-component="xneon-agent" onDragOver={event => { if (event.dataTransfer.types.includes("Files")) event.preventDefault() }} onDrop={event => { event.preventDefault(); void readFiles(event.dataTransfer.files) }}>
+  return <div className="agent-page" id="agent-page" data-component="xneon-agent" data-file-drag={fileDragActive || undefined}
+    onPasteCapture={event => {
+      const files = filesFromTransfer(event.clipboardData)
+      if (files.length) { event.preventDefault(); event.stopPropagation(); guarded(() => readFiles(files)); return }
+      if (!event.clipboardData.getData("text/plain")) {
+        guarded(async () => {
+          const copied = await window.electrobunAPI?.agentClipboardFiles?.() ?? []
+          const files = await Promise.all(copied.map(async file => { const blob = await (await fetch(file.dataUrl)).blob(); return new File([blob], file.name, { type: blob.type }) }))
+          if (files.length) await readFiles(files)
+        })
+      }
+    }}
+    onDragEnterCapture={event => { if (Array.from(event.dataTransfer.types).includes("Files")) { event.preventDefault(); fileDragDepth.current++; setFileDragActive(true) } }}
+    onDragOverCapture={event => { if (Array.from(event.dataTransfer.types).includes("Files")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy" } }}
+    onDragLeaveCapture={() => { fileDragDepth.current = Math.max(0, fileDragDepth.current - 1); if (!fileDragDepth.current) setFileDragActive(false) }}
+    onDropCapture={event => { fileDragDepth.current = 0; setFileDragActive(false); const files = filesFromTransfer(event.dataTransfer); if (!files.length) return; event.preventDefault(); event.stopPropagation(); guarded(() => readFiles(files)) }}>
     <header className={cn("agent-header launcher-page-header", CONTENT_ENTER_DELAYED)}>
       <div className="flex items-center gap-3"><div className="agent-brand"><IconRobot size={22} stroke={1.7} /></div><div><h1 className="text-xl font-bold tracking-tight">{t("agent.title")}</h1><p className="text-xs text-muted-foreground">{t("agent.subtitle")}</p></div></div>
       <div className="flex w-fit items-center gap-0.5 rounded-xl border border-border/50 bg-muted/30 p-1">
@@ -517,7 +557,7 @@ export function AgentPage() {
       {showHistory && <aside className="agent-history">
         <button type="button" className="agent-primary w-full justify-center" disabled={running || state.loading} onClick={() => { setShowArchive(false); guarded(() => newAgentChat()) }}><IconPlus size={16} className="shrink-0 text-current" aria-hidden="true" />{t("agent.newChat")}</button>
         <div className="mt-6 mb-2 flex justify-between px-2 text-[10px] uppercase tracking-widest text-muted-foreground"><span>{t(showArchive ? "agent.archive.title" : "agent.chats")}</span><span>{visibleChats.length}</span></div>
-        <div className="min-h-0 flex-1 overflow-y-auto space-y-1">{visibleChats.map(item => <div className={cn("agent-chat-row group", item.id === chat?.id && "agent-chat-active")} key={item.id}><button className="min-w-0 flex-1 py-3 pl-3 text-left" disabled={running || state.loading} onClick={() => guarded(() => selectAgentChat(item.id))}><span className="block truncate text-xs font-medium">{item.title}</span><span className="block mt-1 text-[10px] text-muted-foreground">{new Date(item.updatedAt).toLocaleDateString(i18n.language, { day: "numeric", month: "short" })}</span></button><button type="button" className="agent-icon-button opacity-0 group-hover:opacity-100 focus-visible:opacity-100" disabled={running || state.loading} title={t(item.archived ? "agent.archive.restore" : "agent.archive.action")} aria-label={t(item.archived ? "agent.archive.restore" : "agent.archive.action")} onClick={() => guarded(() => archiveAgentChat(item.id, !item.archived))}>{item.archived ? <IconArchiveOff size={13} /> : <IconArchive size={13} />}</button><button type="button" className="agent-icon-button opacity-0 group-hover:opacity-100 focus-visible:opacity-100" disabled={running} title={t("agent.deleteChat")} aria-label={t("agent.deleteChat")} onClick={() => setDeleteId(item.id)}><IconTrash size={13} /></button></div>)}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto space-y-1">{visibleChats.map(item => <div className={cn("agent-chat-row group", item.id === chat?.id && "agent-chat-active")} key={item.id}><button className="min-w-0 flex-1 py-3 pl-3 text-left" disabled={running || state.loading} onClick={() => guarded(() => selectAgentChat(item.id))}><span className="block truncate text-xs font-medium">{item.title}</span><span className="block mt-1 text-[10px] text-muted-foreground">{new Date(item.updatedAt).toLocaleDateString(i18n.language, { day: "numeric", month: "short" })}</span></button><button type="button" className="agent-icon-button border border-border bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50" disabled={running || state.loading} title={t(item.archived ? "agent.archive.restore" : "agent.archive.action")} aria-label={t(item.archived ? "agent.archive.restore" : "agent.archive.action")} onClick={() => guarded(() => archiveAgentChat(item.id, !item.archived))}>{item.archived ? <IconArchiveOff size={13} /> : <IconArchive size={13} />}</button><button type="button" className="agent-icon-button border border-border bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50" disabled={running} title={t("agent.deleteChat")} aria-label={t("agent.deleteChat")} onClick={() => setDeleteId(item.id)}><IconTrash size={13} /></button></div>)}</div>
         {!visibleChats.length && <p className="px-2 py-3 text-xs text-muted-foreground">{t(showArchive ? "agent.archive.empty" : "agent.archive.noActive")}</p>}
         <button type="button" className="agent-history-archive" aria-pressed={showArchive} onClick={() => setShowArchive(value => !value)}>{showArchive ? <IconArrowLeft size={15} /> : <IconArchive size={15} />}<span>{t(showArchive ? "agent.archive.back" : "agent.archive.title")}</span>{!showArchive && <span className="ml-auto text-[10px]">{archivedCount}</span>}</button>
       </aside>}
@@ -549,7 +589,7 @@ export function AgentPage() {
     </div>
     <input ref={fileInput} className="hidden" type="file" multiple accept=".log,.txt,.md,.json,.json5,.toml,.cfg,.conf,.properties,.yaml,.yml,.png,.jpg,.jpeg,.webp,.gif" onChange={event => { if (event.target.files) void readFiles(event.target.files); event.target.value = "" }} />
     {previewProject && <Suspense fallback={null}><AgentProjectDetailsModal project={previewProject} onClose={() => setPreviewProject(null)} /></Suspense>}
-    <Dialog open={!!preview} onOpenChange={open => { if (!open) setPreview(null) }}><DialogContent className="max-w-2xl" data-window="agent-attachment-preview"><DialogHeader><DialogTitle>{preview?.name}</DialogTitle><DialogDescription>{t("agent.previewDescription")}</DialogDescription></DialogHeader>{preview?.kind === "project" && preview.projectId && <ProjectResults item={{ id: preview.id, kind: "tool", text: "", toolName: "get_project", output: preview.content }} />}{preview?.imageUrl && <img src={preview.imageUrl} alt={preview.name} className="max-h-[50vh] w-full rounded-xl object-contain" />}<details open={!preview?.projectId && !preview?.imageUrl}><summary className="cursor-pointer text-xs text-muted-foreground">{t("agent.result")}</summary><pre className="agent-json max-h-[40vh] mt-2">{preview?.content}</pre></details></DialogContent></Dialog>
+    <Dialog open={!!preview} onOpenChange={open => { if (!open) setPreview(null) }}><DialogContent className="max-w-2xl" data-window="agent-attachment-preview"><DialogHeader><DialogTitle>{preview?.name}</DialogTitle><DialogDescription>{t("agent.previewDescription")}</DialogDescription></DialogHeader>{preview?.kind === "project" && preview.projectId && <ProjectResults item={{ id: preview.id, kind: "tool", text: "", toolName: "get_project", output: preview.content }} />}{preview?.imageUrl && <img src={preview.imageUrl} alt={preview.name} className="max-h-[50vh] w-full rounded-xl object-contain" />}<details open={!preview?.projectId && !preview?.imageUrl}><summary className="cursor-pointer text-xs text-muted-foreground">{t("agent.result")}</summary><AgentCodeBlock technical className="agent-json max-h-[40vh]">{preview?.content}</AgentCodeBlock></details></DialogContent></Dialog>
     <ActionConfirmDialog
       open={!!deleteId}
       onClose={() => setDeleteId(null)}

@@ -1,3 +1,7 @@
+import { launcherAssetUrl } from "@/lib/launcher-assets"
+import { ModalCloseButton } from "@/components/ui/modal-close-button"
+import { IconX as LauncherCloseIcon } from "@tabler/icons-react"
+import { IconX as LauncherCancelIcon } from "@tabler/icons-react"
 import { useContentEnter, CONTENT_ENTER_DELAYED } from "../content-motion"
 import { IconPalette } from "@tabler/icons-react"
 import { useState, useEffect, useCallback, useRef } from "react"
@@ -9,7 +13,7 @@ import { useAccounts, type Account } from "@/src/AccountsContext"
 import { CachedAvatar } from "@/components/ui/cached-avatar"
 import { LoaderIcon } from "@/components/launcher/instance/loader-icon"
 import { getAvatarUrl, getAccountTypeInfo, type AccountType } from "../accounts-page"
-import type { CloudUploadCategory } from "@xnlc/types"
+import type { CloudUploadCategory, CloudAccountPreview } from "@xnlc/types"
 import { useAlertDialog } from "@/lib/use-alert-dialog"
 import { ActionConfirmDialog } from "@/components/launcher/instance/action-confirm-dialog"
 import { ModalLayer } from "@/components/ui/modal-layer"
@@ -20,6 +24,7 @@ import type { Theme } from "../settings/types"
 
 const FALLBACK_AVATAR = "avatar://head/Steve"
 const cloudSectionIcons = { accounts: IconUser, builds: IconColorSwatch, servers: IconServer, themes: IconPalette }
+const uploadButtonClass = "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-primary/20 bg-primary/10 px-3 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
 
 function CloudFileIcon({ icon, name }: { icon?: string; name: string }) {
   const retryCount = useRef(0)
@@ -32,7 +37,7 @@ function CloudFileIcon({ icon, name }: { icon?: string; name: string }) {
     }
   }, [icon])
   if (!icon) return null
-  return <img data-ui="cloud-cloud-file-browser-img-1" data-component="cloud-file-icon" src={icon} alt="" className="w-full h-full object-cover rounded" onError={handleError} />
+  return <img data-ui="cloud-cloud-file-browser-img-1" data-component="cloud-file-icon" src={launcherAssetUrl(icon)} alt="" className="w-full h-full object-cover rounded" onError={handleError} />
 }
 
 function BuildThumbIcon({ icon }: { icon?: string }) {
@@ -44,7 +49,7 @@ function BuildThumbIcon({ icon }: { icon?: string }) {
       </div>
     )
   }
-  return <img data-ui="cloud-cloud-file-browser-img-2" data-component="build-thumb-icon" src={icon} alt="" className="w-full h-full object-cover" onError={() => setFailed(true)} />
+  return <img data-ui="cloud-cloud-file-browser-img-2" data-component="build-thumb-icon" src={launcherAssetUrl(icon)} alt="" className="w-full h-full object-cover" onError={() => setFailed(true)} />
 }
 
 function FileIcon({ file, currentPath, localBuilds, localServers }: {
@@ -61,9 +66,9 @@ function FileIcon({ file, currentPath, localBuilds, localServers }: {
   }
   if (file.name.endsWith(".xntheme")) return <IconColorSwatch className="h-5 w-5 text-primary" />
 
-  if (currentPath === "accounts" && file.name.endsWith(".json")) {
-    const username = file.name.replace(/\.json$/i, "")
-    return <CloudFileIcon icon={`avatar://head/${encodeURIComponent(username)}`} name={username} />
+  if ((currentPath === "accounts" || file.category === "accounts" || file.accountPreview) && file.name.endsWith(".json")) {
+    if (!file.accountPreview) return <IconUser className="h-5 w-5 text-primary/70" strokeWidth={1.75} />
+    return <CachedAvatar src={getAvatarUrl(file.accountPreview, file.accountPreview.username)} className="h-full w-full rounded object-cover" />
   }
 
   if (currentPath === "builds" && file.name.endsWith(".zip")) {
@@ -94,7 +99,7 @@ function FileIcon({ file, currentPath, localBuilds, localServers }: {
   return <IconFile className="w-5 h-5 text-muted-foreground/60" />
 }
 
-const api = typeof window !== "undefined" ? window.electronAPI : undefined
+const api = typeof window !== "undefined" ? window.electrobunAPI : undefined
 
 type CloudFile = {
   id: string
@@ -105,6 +110,7 @@ type CloudFile = {
   isDir: boolean
   category?: string
   themePreview?: Theme
+  accountPreview?: CloudAccountPreview
 }
 
 type Props = {
@@ -138,7 +144,7 @@ export function CloudFileBrowser({ providerId, pendingThemeId, onPendingThemeHan
   const [pendingDelete, setPendingDelete] = useState<CloudFile | null>(null)
 
   useEffect(() => {
-    return window.electronAPI?.onCloudUploadProgress?.((data) => {
+    return window.electrobunAPI?.onCloudUploadProgress?.((data) => {
       setUploadProgress(prev => ({ ...prev, [data.id]: { percent: data.percent, stage: data.stage } }))
     })
   }, [])
@@ -176,10 +182,10 @@ export function CloudFileBrowser({ providerId, pendingThemeId, onPendingThemeHan
   }, [pendingThemeId, onPendingThemeHandled])
 
   useEffect(() => {
-    window.electronAPI?.loadBuildsLight().then(builds => {
+    window.electrobunAPI?.loadBuildsLight().then(builds => {
       setLocalBuilds(builds.map(b => ({ id: b.id, name: b.name, icon: b.icon, version: b.version, modLoader: b.modLoader })))
     }).catch(() => {})
-    window.electronAPI?.mcServerList().then(servers => {
+    window.electrobunAPI?.mcServerList().then(servers => {
       setLocalServers(servers.map(s => ({ id: s.id, name: s.name, icon: s.icon, version: s.gameVersion, modloader: s.modloader })))
     }).catch(() => {})
   }, [])
@@ -234,7 +240,7 @@ export function CloudFileBrowser({ providerId, pendingThemeId, onPendingThemeHan
           if (!result.success) showAlert(result.error || t("cloud.errorDownload"))
         }
       } else {
-        showAlert(t("cloud.onlyElectron"))
+        showAlert(t("cloud.desktopOnly"))
       }
     }
   }, [providerId, currentPath, addAccount, showAlert, importingTheme, t])
@@ -462,7 +468,7 @@ export function CloudFileBrowser({ providerId, pendingThemeId, onPendingThemeHan
         ))}
       </div>
 
-      <div data-ui="cloud-cloud-file-browser-div-8" className={`flex items-center gap-2 mb-3 ${CONTENT_ENTER_DELAYED}`}>
+      <div data-ui="cloud-cloud-file-browser-div-8" className={`flex items-center gap-2 mb-3 rounded-xl border border-border bg-card px-4 py-3 ${CONTENT_ENTER_DELAYED}`}>
         {currentPath && (
           <button data-ui="cloud-cloud-file-browser-button-2" onClick={handleGoUp}
             className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
@@ -492,7 +498,7 @@ export function CloudFileBrowser({ providerId, pendingThemeId, onPendingThemeHan
 
       <div data-ui="cloud-cloud-file-browser-div-10" className={cn("flex-1 overflow-y-auto", contentEnter)}>
         {loading ? (
-          <div data-ui="cloud-cloud-file-browser-div-11" className="flex items-center justify-center py-12">
+          <div data-ui="cloud-cloud-file-browser-div-11" className="flex min-h-full items-center justify-center">
             <IconLoader2 className="w-6 h-6 text-primary animate-spin" />
           </div>
         ) : error ? (
@@ -501,17 +507,17 @@ export function CloudFileBrowser({ providerId, pendingThemeId, onPendingThemeHan
             <button data-ui="cloud-cloud-file-browser-button-6" onClick={fetchFiles} className="mt-2 text-xs text-primary hover:underline">{t("cloud.retry")}</button>
           </div>
         ) : filtered.length === 0 ? (
-          <div data-ui="cloud-cloud-file-browser-div-13" className="text-center py-12">
+          <div data-ui="cloud-cloud-file-browser-div-13" className="flex min-h-full flex-col items-center justify-center rounded-xl border border-border bg-card px-4 py-8 text-center">
             <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-3xl border border-primary/20 bg-primary/10 text-primary mx-auto mb-4"><IconCloud className="h-10 w-10" strokeWidth={1.75} aria-hidden="true" /></div>
-            <p data-ui="cloud-cloud-file-browser-p-2" className="text-sm text-muted-foreground/50">{t("cloud.folderEmpty")}</p>
+            <p data-ui="cloud-cloud-file-browser-p-2" className="text-sm text-muted-foreground">{t("cloud.folderEmpty")}</p>
           </div>
         ) : (
-          <div data-ui="cloud-cloud-file-browser-div-14" className="space-y-1">
+          <div data-ui="cloud-cloud-file-browser-div-14" className="space-y-2">
             {filtered.map(file => (
               <div data-ui="cloud-cloud-file-browser-div-15" data-component="cloud-file-row" data-directory={file.isDir} key={file.id}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all group",
-                  file.isDir ? "hover:bg-muted/40 cursor-pointer" : "hover:bg-muted/30"
+                  "flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 transition-colors group",
+                  file.isDir ? "hover:bg-muted/60 cursor-pointer" : "hover:bg-muted/40"
                 )}
                 onClick={() => file.isDir ? handleFolderClick(file.path) : undefined}>
                 <div data-ui="cloud-cloud-file-browser-div-16" className={cn("flex items-center justify-center shrink-0 overflow-hidden", file.themePreview ? "w-40" : "w-9 h-9 rounded-lg bg-muted/50")}>
@@ -522,21 +528,21 @@ export function CloudFileBrowser({ providerId, pendingThemeId, onPendingThemeHan
                     <p data-ui="cloud-cloud-file-browser-p-3" className="text-sm font-medium text-foreground truncate">{getDisplayName(file)}</p>
                     {getFileTypeBadge(file)}
                   </div>
-                  <p data-ui="cloud-cloud-file-browser-p-4" className="text-xs text-muted-foreground/60">
+                  <p data-ui="cloud-cloud-file-browser-p-4" className="text-xs text-muted-foreground">
                     {file.isDir ? t("cloud.folder") : formatBytes(file.size)}
                     {file.modifiedAt && ` · ${timeAgo(file.modifiedAt)}`}
                   </p>
                 </div>
                 {!file.isDir && (currentPath === "builds" || currentPath === "servers" || currentPath === "accounts" || file.name.endsWith(".xntheme")) && (
-                  <div data-ui="cloud-cloud-file-browser-div-19" className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div data-ui="cloud-cloud-file-browser-div-19" className="flex shrink-0 items-center gap-1">
                     <button data-ui="cloud-cloud-file-browser-button-7" onClick={(e) => { e.stopPropagation(); handleDownload(file) }}
                       disabled={!!importingTheme}
-                      className="p-1.5 rounded-lg hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors"
+                      className="p-1.5 rounded-lg border border-border bg-muted/60 hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors"
 title={t("cloud.download")}>
                       {importingTheme === file.id ? <IconLoader2 className="h-4 w-4 animate-spin" /> : <IconDownload className="w-4 h-4" />}
                     </button>
                     <button data-ui="cloud-cloud-file-browser-button-8" onClick={(e) => { e.stopPropagation(); handleDelete(file) }}
-                      className="p-1.5 rounded-lg hover:bg-destructive/15 text-muted-foreground hover:text-destructive transition-colors"
+                      className="p-1.5 rounded-lg border border-border bg-muted/60 hover:bg-destructive/15 text-muted-foreground hover:text-destructive transition-colors"
                       title={t("cloud.delete")}>
                       <IconTrash className="w-4 h-4" />
                     </button>
@@ -549,7 +555,7 @@ title={t("cloud.download")}>
       </div>
 
       {quota && (
-        <div data-ui="cloud-cloud-file-browser-div-20" className="mt-3 pt-3 border-t border-border">
+        <div data-ui="cloud-cloud-file-browser-div-20" className="mt-3 rounded-xl border border-border bg-card px-4 py-3">
           <div data-ui="cloud-cloud-file-browser-div-21" className="flex items-center justify-between text-xs text-muted-foreground">
             <span data-ui="cloud-cloud-file-browser-span-11">{t("cloud.storageStatus")}</span>
             <span data-ui="cloud-cloud-file-browser-span-12">{formatBytes(quota.used)}{quota.total != null ? ` / ${formatBytes(quota.total)}` : ""}</span>
@@ -602,22 +608,23 @@ function UploadChoiceModal({ providerId, onClose, onPickBuild, onPickServer, onU
   // первый дублировал этот же запрос при монтировании (uploading === null).
   useEffect(() => {
     if (uploading !== null) return
-    void window.electronAPI?.getSetting("customThemes").then(raw => setLocalThemes(parseThemes(raw))).catch(() => setLocalThemes([]))
-    window.electronAPI?.loadBuildsLight().then(builds => {
+    void window.electrobunAPI?.getSetting("customThemes").then(raw => setLocalThemes(parseThemes(raw))).catch(() => setLocalThemes([]))
+    window.electrobunAPI?.loadBuildsLight().then(builds => {
       setLocalBuilds(builds.map(b => ({ id: b.id, name: b.name, icon: b.icon, version: b.version, modLoader: b.modLoader })))
     })
-    window.electronAPI?.mcServerList().then(servers => {
+    window.electrobunAPI?.mcServerList().then(servers => {
       setLocalServers(servers.map(s => ({ id: s.id, name: s.name, icon: s.icon, version: s.gameVersion, modloader: s.modloader })))
     })
-    window.electronAPI?.loadAccounts().then(accs => {
+    window.electrobunAPI?.loadAccounts().then(accs => {
       setLocalAccounts(accs.map(a => ({ id: a.id, type: a.type, username: a.username, uuid: a.uuid })))
     })
   }, [uploading])
 
   return (
     <ModalLayer windowId="cloud-cloud-file-browser-window-1" onClose={onClose} className="animate-in fade-in-0">
-      <div data-ui="cloud-cloud-file-browser-div-24" data-component="upload-choice-modal" className="w-full max-w-md mx-4 rounded-2xl bg-card border border-border shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-4 overflow-hidden">
-        <div data-ui="cloud-cloud-file-browser-div-25" className="flex border-b border-border">
+      <div data-ui="cloud-cloud-file-browser-div-24" data-component="upload-choice-modal" className="relative w-full max-w-md mx-4 rounded-2xl bg-card border border-border shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-4 overflow-hidden">
+          <ModalCloseButton className="absolute right-3 top-1.5 z-10" onClick={onClose} />
+        <div data-ui="cloud-cloud-file-browser-div-25" className="pr-14 flex border-b border-border">
           <button type="button" onClick={() => setTab("themes")} className={cn("flex-1 px-3 py-3 text-sm font-medium transition-colors", tab === "themes" ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground")}>{t("themeCloud.folder")}</button>
           <button data-ui="cloud-cloud-file-browser-button-9" onClick={() => setTab("builds")}
             className={cn("flex-1 px-4 py-3 text-sm font-medium transition-colors",
@@ -674,8 +681,8 @@ function UploadChoiceModal({ providerId, onClose, onPickBuild, onPickServer, onU
                         )}
                       </div>
                       <button data-ui="cloud-cloud-file-browser-button-12" onClick={() => onPickBuild(b.id, b.name)} disabled={isUploading}
-                        className="px-3 py-2 rounded-lg bg-muted/50 hover:bg-primary/20 text-muted-foreground hover:text-primary transition-colors text-sm flex-shrink-0 disabled:opacity-50">
-                        {isUploading ? <IconLoader2 className="w-4 h-4 animate-spin" /> : t("upload.choose")}
+                        className={uploadButtonClass}>
+                        {isUploading ? <IconLoader2 className="h-3.5 w-3.5 animate-spin" /> : <><IconUpload className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />{t("upload.choose")}</>}
                       </button>
                     </div>
                   )
@@ -695,7 +702,7 @@ function UploadChoiceModal({ providerId, onClose, onPickBuild, onPickServer, onU
                     <div data-ui="cloud-cloud-file-browser-div-36" key={s.id} className="flex items-center gap-4 p-4 rounded-xl border border-border bg-muted/30 hover:border-primary/50 transition-all">
                       <div data-ui="cloud-cloud-file-browser-div-37" className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden bg-primary/10">
                         {s.icon ? (
-                          <img data-ui="cloud-cloud-file-browser-img-3" src={s.icon} alt="" className="w-full h-full object-cover" />
+                          <img data-ui="cloud-cloud-file-browser-img-3" src={launcherAssetUrl(s.icon)} alt="" className="w-full h-full object-cover" />
                         ) : (
                           <IconServer className="w-6 h-6 text-primary" strokeWidth={1.75} />
                         )}
@@ -724,8 +731,8 @@ function UploadChoiceModal({ providerId, onClose, onPickBuild, onPickServer, onU
                         )}
                       </div>
                       <button data-ui="cloud-cloud-file-browser-button-13" onClick={() => onPickServer(s.id, s.name)} disabled={isUploading}
-                        className="px-3 py-2 rounded-lg bg-muted/50 hover:bg-primary/20 text-muted-foreground hover:text-primary transition-colors text-sm flex-shrink-0 disabled:opacity-50">
-                        {isUploading ? <IconLoader2 className="w-4 h-4 animate-spin" /> : t("upload.choose")}
+                        className={uploadButtonClass}>
+                        {isUploading ? <IconLoader2 className="h-3.5 w-3.5 animate-spin" /> : <><IconUpload className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />{t("upload.choose")}</>}
                       </button>
                     </div>
                   )
@@ -743,7 +750,7 @@ function UploadChoiceModal({ providerId, onClose, onPickBuild, onPickServer, onU
                   <div className="flex items-center gap-3">
                     <div className="w-40 shrink-0"><ThemeCompactPreview theme={theme} /></div>
                     <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{theme.name}</span>
-                    <button type="button" disabled={!!uploading || isUploaded} onClick={() => onPickTheme(theme)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-primary transition-colors hover:bg-primary/15 disabled:cursor-default disabled:opacity-60" aria-label={t(isUploaded ? "themeCloud.done" : "cloud.upload")}>
+                    <button type="button" disabled={!!uploading || isUploaded} onClick={() => onPickTheme(theme)} className={uploadButtonClass} aria-label={t(isUploaded ? "themeCloud.done" : "cloud.upload")}>
                       {isUploading ? <IconLoader2 size={18} className="animate-spin" /> : isUploaded ? <IconCheck size={18} /> : <IconUpload size={18} />}
                     </button>
                   </div>
@@ -763,7 +770,7 @@ function UploadChoiceModal({ providerId, onClose, onPickBuild, onPickServer, onU
                   return (
                     <div data-ui="cloud-cloud-file-browser-div-44" key={a.id} className="flex items-center gap-4 p-4 rounded-xl border border-border bg-muted/30 hover:border-primary/50 transition-all">
                       <div data-ui="cloud-cloud-file-browser-div-45" className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden" style={{ backgroundColor: `color-mix(in srgb, ${info.color} 12.5%, transparent)` }}>
-                        <CachedAvatar src={getAvatarUrl(a, a.username)} alt="" className="w-full h-full object-cover" />
+                        <CachedAvatar src={launcherAssetUrl(getAvatarUrl(a, a.username))} alt="" className="w-full h-full object-cover" />
                       </div>
                       <div data-ui="cloud-cloud-file-browser-div-46" className="flex-1 min-w-0">
                         <span data-ui="cloud-cloud-file-browser-span-21" className="font-medium text-foreground truncate block">{a.username}</span>
@@ -778,8 +785,8 @@ function UploadChoiceModal({ providerId, onClose, onPickBuild, onPickServer, onU
                         )}
                       </div>
                       <button data-ui="cloud-cloud-file-browser-button-14" onClick={() => onUploadAccount(a)} disabled={isUploading}
-                        className="px-3 py-2 rounded-lg bg-muted/50 hover:bg-primary/20 text-muted-foreground hover:text-primary transition-colors text-sm flex-shrink-0 disabled:opacity-50">
-                        {isUploading ? <IconLoader2 className="w-4 h-4 animate-spin" /> : t("cloud.upload")}
+                        className={uploadButtonClass}>
+                        {isUploading ? <IconLoader2 className="h-3.5 w-3.5 animate-spin" /> : <><IconUpload className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />{t("cloud.upload")}</>}
                       </button>
                     </div>
                   )
@@ -791,7 +798,7 @@ function UploadChoiceModal({ providerId, onClose, onPickBuild, onPickServer, onU
         <div data-ui="cloud-cloud-file-browser-div-50" className="p-3 border-t border-border flex justify-end">
           <button data-ui="cloud-cloud-file-browser-button-15" onClick={onClose}
             className="px-4 py-2 rounded-xl text-sm font-medium bg-muted/50 hover:bg-muted text-foreground transition-colors">
-            {t("cloud.close")}
+            {<span className="inline-flex items-center justify-center gap-2"><LauncherCloseIcon className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />{t("cloud.close")}</span>}
           </button>
         </div>
       </div>
@@ -877,8 +884,9 @@ function SelectiveImportModal({
 
   return (
     <ModalLayer windowId="cloud-cloud-file-browser-window-2" onClose={onClose} className="animate-in fade-in-0">
-      <div data-ui="cloud-cloud-file-browser-div-51" data-component="selective-import-modal" className="w-full max-w-md mx-4 rounded-2xl bg-card border border-border shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-4 overflow-hidden">
-        <div data-ui="cloud-cloud-file-browser-div-52" className="p-4 border-b border-border">
+      <div data-ui="cloud-cloud-file-browser-div-51" data-component="selective-import-modal" className="relative w-full max-w-md mx-4 rounded-2xl bg-card border border-border shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-4 overflow-hidden">
+          <ModalCloseButton className="absolute right-3 top-3 z-10" onClick={onClose} />
+        <div data-ui="cloud-cloud-file-browser-div-52" className="pr-14 p-4 border-b border-border">
           <h3 data-ui="cloud-cloud-file-browser-h3-1" className="flex items-center gap-2 font-semibold text-foreground text-base"><ModalTitleIcon>{isServer ? <IconServer className="h-4 w-4" strokeWidth={1.75} /> : <IconColorSwatch className="h-4 w-4" strokeWidth={1.75} />}</ModalTitleIcon>{t("cloud.importTitle", { name })}</h3>
           <p data-ui="cloud-cloud-file-browser-p-11" className="text-xs text-muted-foreground mt-1">
             {t("cloud.importChooseComponents", { what: isServer ? t("cloud.type.server") : t("cloud.type.build") })}
@@ -925,7 +933,7 @@ function SelectiveImportModal({
             disabled={importing}
             className="px-4 py-2 rounded-xl text-sm font-medium bg-muted/50 hover:bg-muted text-foreground transition-colors disabled:opacity-50"
           >
-            {t("common.cancel")}
+            {<span className="inline-flex items-center justify-center gap-2"><LauncherCancelIcon className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />{t("common.cancel")}</span>}
           </button>
           <button data-ui="cloud-cloud-file-browser-button-18"
             onClick={handleImport}
@@ -1012,8 +1020,9 @@ function SelectiveUploadModal({
 
   return (
     <ModalLayer windowId="cloud-cloud-file-browser-window-3" onClose={() => { if (!uploading) onClose() }} className="animate-in fade-in-0">
-      <div data-ui="cloud-cloud-file-browser-div-58" data-component="selective-upload-modal" className="w-full max-w-md mx-4 rounded-2xl bg-card border border-border shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-4 overflow-hidden">
-        <div data-ui="cloud-cloud-file-browser-div-59" className="p-4 border-b border-border">
+      <div data-ui="cloud-cloud-file-browser-div-58" data-component="selective-upload-modal" className="relative w-full max-w-md mx-4 rounded-2xl bg-card border border-border shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-4 overflow-hidden">
+          <ModalCloseButton className="absolute right-3 top-3 z-10" onClick={onClose} disabled={uploading} />
+        <div data-ui="cloud-cloud-file-browser-div-59" className="pr-14 p-4 border-b border-border">
           <h3 data-ui="cloud-cloud-file-browser-h3-2" className="flex items-center gap-2 font-semibold text-foreground text-base"><ModalTitleIcon>{isServer ? <IconServer className="h-4 w-4" strokeWidth={1.75} /> : <IconColorSwatch className="h-4 w-4" strokeWidth={1.75} />}</ModalTitleIcon>{t("upload.title", { name })}</h3>
           <p data-ui="cloud-cloud-file-browser-p-14" className="text-xs text-muted-foreground mt-1">
             {t(isServer ? "upload.subtitleServer" : "upload.subtitleBuild")}
@@ -1088,7 +1097,7 @@ function SelectiveUploadModal({
             disabled={uploading}
             className="px-4 py-2 rounded-xl text-sm font-medium bg-muted/50 hover:bg-muted text-foreground transition-colors disabled:opacity-50"
           >
-            {t("common.cancel")}
+            {<span className="inline-flex items-center justify-center gap-2"><LauncherCancelIcon className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />{t("common.cancel")}</span>}
           </button>
           <button data-ui="cloud-cloud-file-browser-button-22"
             onClick={handleConfirm}

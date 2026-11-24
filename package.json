@@ -1,7 +1,7 @@
 {
   "name": "xneon-launcher",
-  "version": "1.0.7",
-  "description": "Modern, fast, and feature-rich Minecraft launcher built with Electron and React",
+  "version": "1.0.9-pre1",
+  "description": "Modern, fast, and feature-rich Minecraft launcher",
   "author": {
     "name": "Xneon Launcher",
     "email": "support@xneon.org"
@@ -9,49 +9,79 @@
   "homepage": "https://launcher.xneon.org",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/XneonTeam/Xneon-Launcher.git"
+    "url": "git+https://github.com/MAINER4IK/Xneon-Launcher-bun.git"
   },
   "private": true,
-  "main": "dist-electron/main/index.js",
+  "packageManager": "bun@1.4.4",
+  "workspaces": ["packages/*"],
+  "overrides": {
+    "shell-quote": ">=1.9.0",
+    "discord-rpc>register-scheme": "https://codeload.github.com/devsnek/node-register-scheme/tar.gz/e7cc9a63a1f512565da44cb57316d9fb10750e17?archive=tar",
+    "ajv>fast-uri": "3.1.9",
+    "minimatch>brace-expansion": "2.1.7",
+    "postcss>source-map-js": "1.2.2",
+    "@tailwindcss/node>source-map-js": "1.2.2"
+  },
+  "trustedDependencies": ["esbuild"],
   "dependencies": {
     "@fontsource/plus-jakarta-sans": "^5.3.0",
-    "@types/prismjs": "^1.26.6",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@xnlc/agent": "workspace:*",
+    "@xnlc/archives": "workspace:*",
     "@xnlc/core": "workspace:*",
     "@xnlc/mods": "workspace:*",
     "@xnlc/nbt": "workspace:*",
+    "@xnlc/parser": "workspace:*",
     "@xnlc/servers": "workspace:*",
+    "@xnlc/share": "workspace:*",
     "@xnlc/skins": "workspace:*",
     "@xnlc/types": "workspace:*",
-    "adm-zip": "^0.6.0",
-    "axios": "^1.18.1",
-    "better-sqlite3": "^13.0.3",
+    "@xnlc/urls": "workspace:*",
     "discord-rpc": "^4.0.1",
-    "electron-updater": "^6.8.9",
-    "form-data": "^4.0.6",
+    "fflate": "^0.8.3",
     "i18next": "^26.3.6",
-    "iconv-lite": "^0.7.3",
+    "nativefiledialog-for-bun": "0.3.2",
     "pngjs": "^7.0.0",
     "prismjs": "^1.30.0",
     "react-simple-code-editor": "^0.14.1",
     "remark-gfm": "^4.0.1",
     "skinview3d": "^3.4.2",
-    "three": "^0.185.1",
-    "toml": "^5.0.0",
-    "webdav": "^5.10.0",
-    "@xnlc/agent": "workspace:*"
+    "webdav": "^5.10.0"
   },
   "scripts": {
-    "sync:xnlc": "node scripts/sync-local-xnlc.mjs",
-    "predev": "node scripts/gen-credentials.mjs && node scripts/gen-agent-ipc-catalog.mjs && pnpm --filter @xnlc/agent run build",
-    "prebuild": "node scripts/gen-credentials.mjs && node scripts/gen-agent-ipc-catalog.mjs && pnpm --filter @xnlc/agent run build",
-    "prepackage": "node scripts/gen-credentials.mjs && node scripts/gen-agent-ipc-catalog.mjs && pnpm --filter @xnlc/agent run build",
-    "dev": "concurrently -k -s first \"vite --host 127.0.0.1\" \"tsc -p tsconfig.node.json && wait-on tcp:127.0.0.1:5173 --timeout 60000 && cross-env NODE_ENV=development node scripts/launch-electron-dev.mjs\"",
-    "dev:fast": "concurrently -k -s first \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 --timeout 15000 && cross-env NODE_ENV=development node scripts/launch-electron-dev.mjs\"",
-    "build:renderer": "vite build",
-    "build:electron": "tsc -p tsconfig.node.json",
-    "build": "pnpm run typecheck && vite build && pnpm run build:electron",
-    "package": "pnpm run build && electron-builder",
-    "typecheck": "tsc --noEmit"
+    "dev": "bun run dev:hmr",
+    "dev:hmr": "bun scripts/dev-hmr.mjs",
+    "dev:bundled": "bun run build:dev && bun scripts/electrobun.mjs run --env=dev",
+    "dev:share": "bun --bun run concurrently -k -s first \"bun run share:server\" \"bun --bun run cross-env XNLC_SHARE_URL=http://127.0.0.1:8787 bun run dev\"",
+    "sync:xnlc": "bun scripts/sync-local-xnlc.mjs",
+    "build:renderer": "bun --bun run vite build",
+    "build:share": "bun run --filter @xnlc/archives build && bun run --filter @xnlc/share build && bun run --filter @xnlc/types build",
+    "build": "bun run prepare:desktop && bun run typecheck && bun run build:renderer && bun run build:workers && bun scripts/electrobun.mjs build --env=stable",
+    "package": "bun run build",
+    "typecheck": "bun --bun run tsc --noEmit && bun --bun run tsc -p tsconfig.node.json",
+    "share:server": "bun run build:share && bun --env-file=infrastructure/xnlc-share/.env infrastructure/xnlc-share/server.mjs",
+    "share:worker:dev": "bun run build:share && bun x wrangler@4.160.0 dev --config infrastructure/xnlc-share/wrangler.jsonc",
+    "share:worker:deploy": "bun run build:share && bun x wrangler@4.160.0 deploy --config infrastructure/xnlc-share/wrangler.jsonc",
+    "share:worker:smoke": "bun infrastructure/xnlc-share/tests/worker-smoke.mjs",
+    "share:test": "bun run --filter @xnlc/archives build && bun run --filter @xnlc/share test && bun test infrastructure/xnlc-share/tests/*.test.mjs",
+    "share:test:live": "bun run build:share && bun infrastructure/xnlc-share/tests/live-modrinth.mjs",
+    "liveops:test": "cd infrastructure/xnlc-liveops && go test ./...",
+    "prepare:desktop": "bun scripts/electrobun.mjs prepare && bun scripts/gen-credentials.mjs && bun scripts/gen-agent-ipc-catalog.mjs && bun run --filter \"@xnlc/*\" build",
+    "build:workers": "bun scripts/build-bun-workers.mjs",
+    "build:dev": "bun run prepare:desktop && bun run build:renderer && bun run build:workers && bun scripts/electrobun.mjs build --env=dev",
+    "build:canary": "bun run prepare:desktop && bun run typecheck && bun run build:renderer && bun run build:workers && bun scripts/electrobun.mjs build --env=canary",
+    "test:prepare": "bun scripts/electrobun.mjs prepare && bun scripts/gen-credentials.mjs && bun scripts/gen-agent-ipc-catalog.mjs && bun run --filter \"@xnlc/*\" build && bun scripts/build-electrobun-tests.mjs",
+    "test:desktop": "bun run test:prepare && bun test tests/electrobun",
+    "test:parser": "bun run --filter @xnlc/archives build && bun run --filter @xnlc/parser build && bun scripts/test-parser.mjs offline",
+    "test:integration": "bun run test:prepare && bun scripts/test-parser.mjs integration",
+    "test:archives": "bun run --filter @xnlc/archives build && bun test packages/xnlc-archives/tests",
+    "test:security": "bun run test:prepare && bun test tests/security tests/agent",
+    "test:share": "bun run share:test",
+    "test:offline": "bun run test:prepare && bun run test:offline:prepared",
+    "test:offline:prepared": "bun scripts/run-offline-tests.mjs",
+    "test:tooling": "bun test tests/tooling",
+    "test:live": "bun scripts/test-parser.mjs live",
+    "typecheck:workspaces": "bun scripts/check-workspaces.mjs"
   },
   "devDependencies": {
     "@radix-ui/react-checkbox": "1.3.8",
@@ -59,20 +89,20 @@
     "@radix-ui/react-select": "2.3.4",
     "@tabler/icons-react": "^3.45.0",
     "@tailwindcss/postcss": "^4.3.3",
-    "@types/better-sqlite3": "^7.6.13",
+    "@types/bun": "^1.4.4",
     "@types/node": "^26",
     "@types/pngjs": "^6.0.5",
+    "@types/prismjs": "^1.26.6",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
-    "@types/three": "^0.185.4",
-    "@vitejs/plugin-react": "^6.0.3",
-    "autoprefixer": "^10.5.4",
+    "@vitejs/plugin-react": "^6.1.2",
+    "better-sqlite3": "^13.0.3",
     "clsx": "^2.1.1",
     "concurrently": "^10.0.3",
     "cross-env": "^10.1.0",
     "dotenv": "^17.4.2",
-    "electron": "^43.1.1",
-    "electron-builder": "^26.15.3",
+    "electrobun": "2.0.7",
+    "esbuild": "^0.28.2",
     "postcss": "^8.5",
     "react": "19.2.8",
     "react-dom": "19.2.8",
@@ -84,109 +114,6 @@
     "tailwindcss": "^4.3.3",
     "tw-animate-css": "1.4.0",
     "typescript": "7.0.2",
-    "vite": "^8.1.5",
-    "wait-on": "^9.0.10"
-  },
-  "build": {
-    "appId": "com.xneonlauncher.app",
-    "productName": "Xneon Launcher",
-    "npmRebuild": false,
-    "forceCodeSigning": false,
-    "asarUnpack": [
-      "**/node_modules/better-sqlite3/**"
-    ],
-    "publish": {
-      "provider": "github",
-      "owner": "XneonTeam",
-      "repo": "Xneon-Launcher"
-    },
-    "win": {
-      "target": [
-        "nsis",
-        "zip"
-      ],
-      "icon": "build/icon.ico",
-      "signAndEditExecutable": true,
-      "artifactName": "${name}-${version}-win-${arch}.${ext}"
-    },
-    "nsis": {
-      "oneClick": true,
-      "allowToChangeInstallationDirectory": false,
-      "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico",
-      "installerHeaderIcon": "build/icon.ico"
-    },
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "dist/**/*",
-      "dist-electron/**/*",
-      "assets/**/*",
-      "!**/node_modules/@xnlc/*/src/**",
-      "!**/node_modules/@xnlc/*/scripts/**",
-      "!**/node_modules/@xnlc/*/tsconfig.json",
-      "!**/node_modules/@xnlc/*/*.ts",
-      "!**/node_modules/@xnlc/*/.npmrc"
-    ],
-    "linux": {
-      "target": [
-        "AppImage",
-        "deb",
-        "rpm",
-        "tar.xz",
-        "pacman"
-      ],
-      "category": "Game",
-      "maintainer": "Xneon Launcher <support@xneon.org>",
-      "artifactName": "${name}-${version}-${arch}.${ext}"
-    },
-    "deb": {
-      "depends": [
-        "libnotify4",
-        "libsecret-1-0",
-        "libappindicator3-1",
-        "libxss1"
-      ]
-    },
-    "rpm": {
-      "depends": [
-        "libnotify",
-        "libsecret",
-        "libappindicator-gtk3",
-        "libXScrnSaver"
-      ]
-    },
-    "appImage": {
-      "artifactName": "${name}-${version}-x86_64.${ext}"
-    },
-    "pacman": {
-      "artifactName": "${name}-${version}-x86_64.${ext}"
-    },
-    "mac": {
-      "target": [
-        "dmg",
-        "zip"
-      ],
-      "icon": "build/icon.png",
-      "category": "public.app-category.games",
-      "artifactName": "${name}-${version}-mac-${arch}.${ext}",
-      "hardenedRuntime": true,
-      "gatekeeperAssess": false
-    },
-    "dmg": {
-      "contents": [
-        {
-          "x": 130,
-          "y": 220
-        },
-        {
-          "x": 410,
-          "y": 220,
-          "type": "link",
-          "path": "/Applications"
-        }
-      ]
-    }
+    "vite": "^8.3.5"
   }
 }

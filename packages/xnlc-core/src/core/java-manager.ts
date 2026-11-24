@@ -2,13 +2,14 @@ import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
 import { spawnSync } from "child_process";
+import { extractArchive as extractZipArchive } from "@xnlc/archives";
 import { Downloader } from "./downloader.js";
 import { DownloadJob, DownloadTask } from "./downloader.js";
 import { URLS } from "../constants/urls.js";
 import type { VersionJsonJavaVersion } from "../types/index.js";
 import { ensureDirSync } from "../utils/sync.js";
+import { cleanEnvForGame } from "../utils/primitives.js";
 
-const MOJANG_RUNTIME_MANIFEST = URLS.official.mojang.javaRuntime;
 
 export interface JavaRuntime {
   path: string;
@@ -86,6 +87,25 @@ export class JavaManager {
     private downloader: Downloader,
     private gameDir: string,
   ) {}
+
+  isJava8PerformancePack(javaPath: string): boolean {
+    // Проверка Performance Pack нужна только как дополнительный слой Java4Shell
+    // для Java 8. Если `java -version` не выполнился, запуск игры важнее:
+    // считаем сборку обычной Java 8 (флаги для неё не добавляются), но пишем
+    // предупреждение. Защита Java 17+ от этого не зависит.
+    let result: ReturnType<typeof spawnSync>;
+    try {
+      result = spawnSync(javaPath, ["-version"], { encoding: "utf8", timeout: 10000, windowsHide: true, env: cleanEnvForGame(process.env as Record<string, string>) });
+    } catch (error) {
+      console.warn(`[Java] Cannot determine Java 8 Performance Pack for ${javaPath}; continuing without Java 8 performance-pack protection`, error);
+      return false;
+    }
+    if (result.error || result.status !== 0) {
+      console.warn(`[Java] Cannot determine Java 8 Performance Pack for ${javaPath} (${result.error?.message ?? `exit code ${String(result.status)}`}); continuing without Java 8 performance-pack protection`);
+      return false;
+    }
+    return /performance\s+pack|1\.8\.0[_\d.]*[-+]perf/i.test(`${result.stderr ?? ""}\n${result.stdout ?? ""}`);
+  }
 
   detectJavaVersion(javaPath: string = "java"): number {
     try {
@@ -201,7 +221,7 @@ export class JavaManager {
     ensureDirSync(runtimeDir);
 
     // 1. Fetch all.json to get component manifest URL
-    const allRes = await fetch(MOJANG_RUNTIME_MANIFEST);
+    const allRes = await fetch(URLS.official.mojang.javaRuntime);
     if (!allRes.ok) {
       throw new Error(`Failed to fetch Java runtime manifest: HTTP ${allRes.status}`);
     }
@@ -396,7 +416,7 @@ export class JavaManager {
   }
 
   private async extractArchive(archivePath: string, destDir: string): Promise<void> {
-    fs.mkdirSync(destDir, { recursive: true });
+    await fs.promises.mkdir(destDir, { recursive: true });
 
     if (archivePath.endsWith(".tar.gz") || archivePath.endsWith(".tgz")) {
       const result = spawnSync("tar", ["-xzf", archivePath, "-C", destDir, "--strip-components=1"], {
@@ -407,17 +427,15 @@ export class JavaManager {
         throw new Error(`Failed to extract archive: ${archivePath}`);
       }
     } else if (archivePath.endsWith(".zip")) {
-      const AdmZip = (await import("adm-zip/adm-zip.js")).default;
-      const zip = new AdmZip(archivePath);
-      zip.extractAllTo(destDir, true);
-      const entries = fs.readdirSync(destDir);
-      if (entries.length === 1 && fs.statSync(path.join(destDir, entries[0]!)).isDirectory()) {
+      await extractZipArchive(archivePath, destDir, { overwrite: true });
+      const entries = await fs.promises.readdir(destDir);
+      if (entries.length === 1 && (await fs.promises.stat(path.join(destDir, entries[0]!))).isDirectory()) {
         const nestedDir = path.join(destDir, entries[0]!);
-        const nestedEntries = fs.readdirSync(nestedDir);
+        const nestedEntries = await fs.promises.readdir(nestedDir);
         for (const entry of nestedEntries) {
-          fs.renameSync(path.join(nestedDir, entry), path.join(destDir, entry));
+          await fs.promises.rename(path.join(nestedDir, entry), path.join(destDir, entry));
         }
-        fs.rmdirSync(nestedDir);
+        await fs.promises.rmdir(nestedDir);
       }
     } else {
       throw new Error(`Unsupported archive format: ${archivePath}`);

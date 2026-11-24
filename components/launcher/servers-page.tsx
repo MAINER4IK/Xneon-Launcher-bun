@@ -1,7 +1,11 @@
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { ModalTitleIcon } from "@/components/ui/modal-title-icon"
+import { IconCheck } from "@tabler/icons-react"
+import { IconX as LauncherCancelIcon } from "@tabler/icons-react"
 import { CONTENT_ENTER_DELAYED, useContentEnter } from "./content-motion"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { IconPlus, IconServer, IconTrash, IconLayoutGrid, IconLayoutList, IconPlayerPlay, IconPlayerStop, IconTerminal, IconPencil, IconChevronDown, IconChevronRight, IconPhoto } from "@tabler/icons-react"
+import { IconPlus, IconServer, IconTrash, IconLayoutGrid, IconLayoutList, IconPlayerPlay, IconPlayerStop, IconTerminal2, IconPencil, IconChevronDown, IconChevronRight, IconPhoto } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
 import { useMcServers, useMcServerState } from "@/src/hooks/use-mc-servers"
 import { useMinecraftVersionOptions } from "@/src/hooks/use-minecraft-version-options"
@@ -9,12 +13,14 @@ import { dataCache, MOD_SEARCH_CACHE_TTL } from "@/lib/swr"
 import { ServerTile } from "./server-tile"
 import { ServerContextMenu } from "./server/server-context-menu"
 import { ServerCreateDialog } from "./server-create-dialog"
+import { RemoteServerJoinDialog } from "./server/remote-access-dialog"
 import { ServerPackInstallDialog, type PackInstallTarget } from "./server-pack-install-dialog"
 import { ServerTrashView } from "./server-trash-view"
 import { CategoryAssignModal } from "./category-assign-modal"
 import { IconPickerModal } from "./instance/icon-picker-modal"
 import { ModalLayer } from "@/components/ui/modal-layer"
 import { ServersBrowse } from "./servers-browse"
+import { Spinner } from "./instance/spinner"
 import { SORT_OPTIONS_BY_SOURCE } from "./instance/sort-options"
 import { InstanceModal } from "./instance/instance-modal"
 import { LoaderIcon, loaderLabel } from "./instance/loader-icon"
@@ -45,6 +51,7 @@ export function ServersPage({ onSelectServer, rootResetToken }: ServersPageProps
     categoryIcons, setCategoryIcon } = useMcServers()
   const { visibleVersions, versionsLoaded } = useMinecraftVersionOptions()
   const [showCreate, setShowCreate] = useState(false)
+  const [showRemoteJoin, setShowRemoteJoin] = useState(false)
   const [view, setView] = useState<"servers" | "trash" | "modrinth" | "curseforge">("servers")
   const contentEnter = useContentEnter(!loading)
   const [layoutMode, changeLayout] = usePersistentLayout("xneon-launcher:serversLayout")
@@ -100,7 +107,7 @@ export function ServersPage({ onSelectServer, rootResetToken }: ServersPageProps
       const key = `servers:modrinth:${searchQuery}:${selectedVersion}:${selectedModLoader}:${mrSortBy}:${catsKey}:${currentPage}`
       const resp = await dataCache.getOrFetch(
         key,
-        () => window.electronAPI?.modsModrinthSearch(
+        () => window.electrobunAPI?.modsModrinthSearch(
           searchQuery,
           "modpack",
           selectedVersion === "all" ? undefined : selectedVersion,
@@ -129,7 +136,7 @@ export function ServersPage({ onSelectServer, rootResetToken }: ServersPageProps
       const key = `servers:curseforge:${searchQuery}:${selectedVersion}:${selectedModLoader}:${cfSortBy}:${catsKey}:${currentPage}`
       const resp = await dataCache.getOrFetch(
         key,
-        () => window.electronAPI?.modsCurseforgeSearch(
+        () => window.electrobunAPI?.modsCurseforgeSearch(
           searchQuery,
           "modpack",
           selectedVersion === "all" ? undefined : selectedVersion,
@@ -185,8 +192,8 @@ export function ServersPage({ onSelectServer, rootResetToken }: ServersPageProps
     const loadCategories = async () => {
       try {
         const [mrCats, cfCats] = await Promise.all([
-          window.electronAPI?.modsModrinthCategories() ?? Promise.resolve([]),
-          window.electronAPI?.modsCurseforgeCategories() ?? Promise.resolve([]),
+          window.electrobunAPI?.modsModrinthCategories() ?? Promise.resolve([]),
+          window.electrobunAPI?.modsCurseforgeCategories() ?? Promise.resolve([]),
         ])
         if (cancelled) return
         const merged = [
@@ -234,13 +241,13 @@ export function ServersPage({ onSelectServer, rootResetToken }: ServersPageProps
     try {
       if (item.source === "modrinth") {
         const [details, versions] = await Promise.all([
-          dataCache.getOrFetch(`servers-modrinth:details:${item.slug}`, () => window.electronAPI?.modsModrinthDetails(item.slug) ?? null, { immutable: true }),
-          dataCache.getOrFetch(`servers-modrinth:versions:${item.slug}`, () => window.electronAPI?.modsModrinthVersions(item.slug) ?? null, { immutable: true }),
+          dataCache.getOrFetch(`servers-modrinth:details:${item.slug}`, () => window.electrobunAPI?.modsModrinthDetails(item.slug) ?? null, { immutable: true }),
+          dataCache.getOrFetch(`servers-modrinth:versions:${item.slug}`, () => window.electrobunAPI?.modsModrinthVersions(item.slug) ?? null, { immutable: true }),
         ])
         if (details) setSelectedDetails(details)
         setProjectVersions(versions ?? [])
       } else if (item.source === "curseforge" && item.modId != null) {
-        const details = await dataCache.getOrFetch(`servers-curseforge:details:${item.modId}`, () => window.electronAPI?.modsCurseforgeDetails(item.modId!) ?? null, { immutable: true })
+        const details = await dataCache.getOrFetch(`servers-curseforge:details:${item.modId}`, () => window.electrobunAPI?.modsCurseforgeDetails(item.modId!) ?? null, { immutable: true })
         if (details) setSelectedDetails(details)
         setProjectVersions(details?.versions ?? [])
       }
@@ -411,7 +418,7 @@ export function ServersPage({ onSelectServer, rootResetToken }: ServersPageProps
             <IconServer className="w-3.5 h-3.5" strokeWidth={1.75} />
             {t("servers.title")}
           </button>
-          <button data-ui="servers-page-button-2" key="trash" type="button" onClick={() => setView("trash")}
+          <button data-ui="servers-page-button-2" data-action="open-trash" key="trash" type="button" onClick={() => setView("trash")}
             className={cn("flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg text-[13px] font-medium transition-all duration-200",
               view === "trash" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-muted/80")}>
             <IconTrash className="w-3.5 h-3.5 text-current" strokeWidth={1.75} />
@@ -462,6 +469,7 @@ export function ServersPage({ onSelectServer, rootResetToken }: ServersPageProps
                 </button>
               </div>
               <div data-ui="servers-page-div-11" className="w-px h-6 bg-border mx-1" />
+              <button type="button" onClick={() => setShowRemoteJoin(true)} className="flex items-center gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted"><IconServer className="h-4 w-4 text-primary" />{t("remoteServer.joinTitle")}</button>
               <button data-ui="servers-page-button-7"
                 onClick={() => setShowCreate(true)}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium shadow-[0_0_15px_var(--glow-primary)] active:scale-[0.98]"
@@ -537,11 +545,11 @@ export function ServersPage({ onSelectServer, rootResetToken }: ServersPageProps
         <div data-ui="servers-page-content" className={cn("flex flex-1 min-h-0 flex-col", contentEnter)}>
           {/* Server grid */}
           {loading && servers.length === 0 ? (
-            <div data-ui="servers-page-div-12" className="flex items-center justify-center py-20">
-              <div data-ui="servers-page-div-13" className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+            <div data-ui="servers-page-div-12" className="flex flex-1 min-h-0 items-center justify-center">
+              <Spinner />
             </div>
           ) : servers.length === 0 ? (
-            <div data-ui="servers-page-div-14" className="flex flex-1 flex-col items-center justify-center py-6 gap-4 text-center">
+            <div data-ui="servers-page-div-14" className="flex flex-1 flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-4 py-6 text-center">
               <div data-ui="servers-page-div-15" className="flex h-20 w-20 shrink-0 items-center justify-center rounded-3xl border border-primary/20 bg-primary/10 text-primary">
                 <IconServer className="w-10 h-10" strokeWidth={1.75} aria-hidden="true" />
               </div>
@@ -600,22 +608,22 @@ export function ServersPage({ onSelectServer, rootResetToken }: ServersPageProps
                       <div data-ui="servers-page-div-21" className="flex-1" />
                       {groupKey !== "" && (
                         <div data-ui="servers-page-div-22"
-                          className="flex items-center gap-0.5 opacity-0 group-hover/head:opacity-100 transition-opacity"
+                          className="flex items-center gap-1"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <button data-ui="servers-page-button-9" type="button" title={t("categoryMenu.icon")}
                             onClick={() => setIconPickerFor(groupKey)}
-                            className="p-1 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground">
+                            className="p-1.5 rounded-md border border-border bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
                             <IconPhoto className="w-3.5 h-3.5" />
                           </button>
                           <button data-ui="servers-page-button-10" type="button" title={t("servers.renameGroup", "Переименовать категорию")}
                             onClick={() => { setRenameGroupFor(groupKey); setRenameGroupDraft(groupKey) }}
-                            className="p-1 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground">
+                            className="p-1.5 rounded-md border border-border bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
                             <IconPencil className="w-3.5 h-3.5" />
                           </button>
                           <button data-ui="servers-page-button-11" type="button" title={t("servers.deleteGroup", "Удалить категорию")}
                             onClick={() => void deleteGroup(groupKey)}
-                            className="p-1 rounded-md hover:bg-muted text-muted-foreground hover:text-destructive">
+                            className="p-1.5 rounded-md border border-border bg-muted/60 hover:bg-destructive/15 text-muted-foreground hover:text-destructive transition-colors">
                             <IconTrash className="w-3.5 h-3.5" />
                           </button>
                         </div>
@@ -727,36 +735,19 @@ export function ServersPage({ onSelectServer, rootResetToken }: ServersPageProps
         removeLabel={t("categoryMenu.iconRemove")}
       />
 
-      {/* Rename category dialog */}
-      {renameGroupFor && (
-        <ModalLayer windowId="servers-page-window-1" onClose={() => setRenameGroupFor(null)}>
-          <div data-ui="servers-page-div-26" className="w-[320px] rounded-2xl border border-border bg-card p-4 shadow-2xl">
-            <h3 data-ui="servers-page-h3-1" className="text-sm font-semibold text-foreground">{t("servers.renameGroup", "Переименовать категорию")}</h3>
-            <input data-ui="servers-page-input-1"
-              autoFocus
-              value={renameGroupDraft}
-              onChange={(e) => setRenameGroupDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleRenameGroupConfirm()
-                if (e.key === "Escape") setRenameGroupFor(null)
-              }}
-              className="mt-3 w-full rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
-            />
-            <div data-ui="servers-page-div-27" className="mt-3 flex justify-end gap-2">
-              <button data-ui="servers-page-button-15" type="button" onClick={() => setRenameGroupFor(null)}
-                className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
-                {t("common.cancel", "Отмена")}
-              </button>
-              <button data-ui="servers-page-button-16" type="button" onClick={handleRenameGroupConfirm}
-                className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90">
-                {t("common.save", "Сохранить")}
-              </button>
-            </div>
-          </div>
-        </ModalLayer>
-      )}
+      <Dialog open={renameGroupFor !== null} onOpenChange={open => { if (!open) setRenameGroupFor(null) }}>
+        <DialogContent data-window="servers-rename-category" className="max-w-sm gap-5 rounded-2xl border-border bg-card p-5">
+          <DialogHeader><DialogTitle className="flex items-center gap-2 text-base"><ModalTitleIcon><IconPencil className="size-4" strokeWidth={1.75} /></ModalTitleIcon>{t("servers.renameGroup")}</DialogTitle></DialogHeader>
+          <input data-ui="servers-page-input-1" autoFocus value={renameGroupDraft} onChange={event => setRenameGroupDraft(event.target.value)} aria-label={t("servers.renameGroup")} onKeyDown={event => { if (event.key === "Enter" && renameGroupDraft.trim()) handleRenameGroupConfirm() }} className="w-full rounded-xl border border-border bg-muted/40 px-3.5 py-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+          <DialogFooter className="gap-2 border-t border-border/60 pt-4">
+            <button type="button" onClick={() => setRenameGroupFor(null)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-muted/40 px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"><LauncherCancelIcon className="size-4" strokeWidth={1.75} aria-hidden="true" />{t("common.cancel")}</button>
+            <button type="button" onClick={handleRenameGroupConfirm} disabled={!renameGroupDraft.trim()} className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"><IconCheck className="size-4" strokeWidth={1.75} aria-hidden="true" />{t("common.save")}</button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create dialog */}
+      <RemoteServerJoinDialog open={showRemoteJoin} onClose={() => setShowRemoteJoin(false)} onJoined={() => { void reload() }} />
       <ServerCreateDialog
         open={showCreate}
         onOpenChange={setShowCreate}
@@ -870,7 +861,7 @@ function ServerListRow({ server, onClick, onDelete, onDuplicate, onAssignGroup }
           )}
           <button data-ui="servers-page-button-17"
             onClick={handlePlayStop}
-            disabled={isStopping}
+            disabled={isStopping || !!server.remote && !(canStop ? server.remote.permissions.stop : server.remote.permissions.start)}
             className={cn(
               "p-2 rounded-xl transition-all",
               canStop

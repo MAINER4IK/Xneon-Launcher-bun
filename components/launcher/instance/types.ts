@@ -4,7 +4,7 @@ export type ModSort = "relevance" | "downloads" | "follows" | "newest" | "update
 export type Source = "modrinth" | "curseforge" | "ftb"
 export type SearchSource = "both" | Source
 export type ContentType = "mod" | "modpack" | "resourcepack" | "shader"
-export type ModalTab = "description" | "gallery" | "changelog" | "versions"
+export type ModalTab = "description" | "gallery" | "changelog" | "versions" | "reviews"
 
 export type MemoryPreset = "light" | "balanced" | "heavy" | "custom"
 
@@ -63,6 +63,8 @@ export type BuildMod = {
   source?: "local" | Source
   projectId?: string
   modId?: number
+  versionId?: string
+  fileId?: number
   author?: string
   enabled?: boolean
 }

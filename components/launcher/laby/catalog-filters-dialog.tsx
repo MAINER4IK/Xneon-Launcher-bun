@@ -1,3 +1,4 @@
+import { IconX as LauncherCancelIcon } from "@tabler/icons-react"
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/lib/utils"
@@ -5,7 +6,7 @@ import labyLogo from "@/assets/laby/logo.svg"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { ModalTitleIcon } from "@/components/ui/modal-title-icon"
 import { Checkbox } from "@/components/ui/checkbox"
-import { formatUseCount } from "@xnlc/skins"
+import { formatUseCount } from "@xnlc/skins/browser"
 import type { LabyTag } from "@xnlc/types"
 import { IconChevronDown, IconChevronRight, IconList, IconSearch, IconX } from "@tabler/icons-react"
 
@@ -218,9 +219,9 @@ export function CatalogFiltersDialog({ filters, tags, tagsLoading, onApply }: Ca
           <button data-ui="laby-catalog-filters-dialog-button-4"
             type="button"
             onClick={() => setOpen(false)}
-            className="rounded-lg border border-border px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+            className="rounded-lg border border-border bg-muted px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
           >
-            {t("common.cancel", "Отмена")}
+            {<span className="inline-flex items-center justify-center gap-2"><LauncherCancelIcon className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />{t("common.cancel", "Отмена")}</span>}
           </button>
           <button data-ui="laby-catalog-filters-dialog-button-5"
             type="button"
