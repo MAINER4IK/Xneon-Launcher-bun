@@ -15,6 +15,10 @@
     "xneon"
   ],
   "exports": {
+    "./browser": {
+      "types": "./lib/browser.d.ts",
+      "default": "./lib/browser.js"
+    },
     ".": {
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
@@ -26,13 +30,15 @@
     "lib"
   ],
   "dependencies": {
+    "pngjs": "^7.0.0",
+    "@xnlc/urls": "workspace:*",
     "@xnlc/core": "workspace:*",
     "@xnlc/types": "workspace:*"
   },
   "scripts": {
-    "build": "node -e \"fs.rmSync('lib',{recursive:true,force:true})\" && tsc -p tsconfig.json",
-    "clean": "node -e \"fs.rmSync('lib',{recursive:true,force:true})\"",
-    "prepublishOnly": "npm run build"
+    "build": "bun -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\" && bun --bun run tsc -p tsconfig.json",
+    "clean": "bun -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\"",
+    "prepublishOnly": "bun run build"
   },
   "publishConfig": {
     "registry": "https://git.xneon.org/api/packages/MAINER4IK/npm/"

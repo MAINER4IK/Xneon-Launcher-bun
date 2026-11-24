@@ -1,3 +1,4 @@
+import { isContentDownloadCancelled } from "@/lib/content-download"
 import { CONTENT_ENTER_DELAYED } from "../content-motion"
 import { memo, useCallback, useState, useEffect, useMemo } from "react"
 import { useTranslation } from "react-i18next"
@@ -41,6 +42,18 @@ function normalizeContentIdentity(value?: string): string {
     .replace(/[\W_]+/g, "")
 }
 
+/** Iris и Sodium публикуют Fabric-версии без отдельной метки Quilt. */
+function pickDependencyVersion(versions: ModVersion[], build: Build, dep: ModDependency): ModVersion | undefined {
+  const exact = pickCompatibleVersion(versions, build)
+  if (exact) return exact
+  const supportsFabricOnQuilt = [dep.slug, dep.projectId, dep.name].some(value => {
+    const normalized = normalizeContentIdentity(value ?? undefined)
+    return normalized === "iris" || normalized === "irisshaders" || normalized === "sodium"
+  })
+  if (build.modLoader?.toLowerCase() !== "quilt" || !supportsFabricOnQuilt) return undefined
+  return pickCompatibleVersion(versions, { ...build, modLoader: "fabric" })
+}
+
 /** Одна зависимость в плане установки: что за мод и какая именно версия пойдёт. */
 interface DepPlanItem {
   dep: ModDependency
@@ -82,10 +95,10 @@ interface InstanceDetailProps {
   setModCategories: (value: SelectedModCategory[]) => void
   categories: ModCategory[]
   modFileInputRef: React.RefObject<HTMLInputElement | null>
-  addLocalModToBuild: (buildId: string, file: File) => void
+  addLocalModToBuild: (buildId: string, file: File) => void | Promise<void>
   addLocalContentToBuild: (buildId: string, type: "resourcepacks" | "shaders", file: File) => void | Promise<void>
   removeContentFromBuild: (buildId: string, type: "mods" | "resourcepacks" | "shaders", item: Build["mods"][number]) => Promise<boolean>
-  reloadBuilds: () => Promise<void>
+  beginContentMutation: (buildId: string) => () => void
   modLoading: boolean
   modTotalHits: number
   modTotalPages: number
@@ -97,7 +110,7 @@ interface InstanceDetailProps {
   installingModSlug: string | null
   setInstallingModSlug: (slug: string | null) => void
   addModToBuild: (buildId: string, mod: ModSearchResult) => void
-  addContentToBuild: (buildId: string, type: "resourcepacks" | "shaders", mod: ModSearchResult) => void | Promise<void>
+  addContentToBuild: (buildId: string, type: "resourcepacks" | "shaders", mod: ModSearchResult, version?: ModVersion) => Promise<boolean>
   setBuilds: React.Dispatch<React.SetStateAction<Build[]>>
   toggleItemEnabled: (buildId: string, type: "mods" | "resourcepacks" | "shaders", itemId: string) => void | Promise<boolean>
   updateItemVersion: (buildId: string, type: "mods" | "resourcepacks" | "shaders", itemId: string, newVersion: ModVersion) => Promise<boolean>
@@ -137,7 +150,7 @@ export const InstanceDetail = memo(function InstanceDetail(props: InstanceDetail
     addLocalModToBuild,
     addLocalContentToBuild,
     removeContentFromBuild,
-    reloadBuilds,
+    beginContentMutation,
     modLoading,
     modTotalHits,
     modTotalPages,
@@ -229,13 +242,14 @@ export const InstanceDetail = memo(function InstanceDetail(props: InstanceDetail
       if (!dep.projectId) return dep
       try {
         if (source === "modrinth") {
-          const versions = await window.electronAPI?.modsModrinthVersions(dep.projectId) ?? []
-          return versions.some(version => matchesBuildVersion(version, activeBuild)) ? dep : null
+          const versions = await window.electrobunAPI?.modsModrinthVersions(dep.projectId) ?? []
+          return versions.some(version => matchesBuildVersion(version, activeBuild)) || pickDependencyVersion(versions, activeBuild, dep) ? dep : null
         }
         const modId = Number.parseInt(dep.projectId, 10)
         if (!Number.isInteger(modId)) return dep
-        const details = await window.electronAPI?.modsCurseforgeDetails(modId)
-        return (details?.versions ?? []).some(version => matchesBuildVersion(version, activeBuild)) ? dep : null
+        const details = await window.electrobunAPI?.modsCurseforgeDetails(modId)
+        const versions = details?.versions ?? []
+        return versions.some(version => matchesBuildVersion(version, activeBuild)) || pickDependencyVersion(versions, activeBuild, dep) ? dep : null
       } catch {
         // Данные о проекте недоступны — не прячем зависимость от пользователя.
         return dep
@@ -260,8 +274,10 @@ export const InstanceDetail = memo(function InstanceDetail(props: InstanceDetail
     },
   ) => {
     const buildName = activeBuild.name
-    if (!buildName) return
-    const saved = await window.electronAPI?.saveModToIntent(buildName, fileUrl, fileName)
+    if (!buildName) return false
+    const finishMutation = beginContentMutation(activeBuild.id)
+    try {
+    const saved = await window.electrobunAPI?.saveModToIntent(buildName, fileUrl, fileName)
     if (saved) {
       setBuilds(prev => prev.map(build => {
         if (build.id !== activeBuild.id) return build
@@ -316,24 +332,25 @@ export const InstanceDetail = memo(function InstanceDetail(props: InstanceDetail
           mods,
         }
       }))
-      await reloadBuilds()
     }
-  }, [activeBuild.id, activeBuild.name, reloadBuilds, setBuilds])
+    return Boolean(saved)
+    } finally { finishMutation() }
+  }, [activeBuild.id, activeBuild.name, beginContentMutation, setBuilds])
 
   /** Подбирает версию зависимости: сначала ту, что требует API, иначе совместимую. */
   const resolveDepVersion = useCallback(async (dep: ModDependency, source: string): Promise<ModVersion | undefined> => {
     try {
       if (source === "modrinth") {
-        const versions = await window.electronAPI?.modsModrinthVersions(dep.projectId) ?? []
+        const versions = await window.electrobunAPI?.modsModrinthVersions(dep.projectId) ?? []
         // versionId от API — точное требование мода, его и берём.
         return (dep.versionId ? versions.find(v => v.id === dep.versionId) : undefined)
-          ?? pickCompatibleVersion(versions, activeBuild)
+          ?? pickDependencyVersion(versions, activeBuild, dep)
       }
       const depModId = parseInt(dep.projectId)
       if (isNaN(depModId)) return undefined
-      const versions = (await window.electronAPI?.modsCurseforgeDetails(depModId))?.versions ?? []
+      const versions = (await window.electrobunAPI?.modsCurseforgeDetails(depModId))?.versions ?? []
       return (dep.versionId ? versions.find(v => v.id === dep.versionId) : undefined)
-        ?? pickCompatibleVersion(versions, activeBuild)
+        ?? pickDependencyVersion(versions, activeBuild, dep)
     } catch {
       return undefined
     }
@@ -364,7 +381,7 @@ export const InstanceDetail = memo(function InstanceDetail(props: InstanceDetail
       }
       const depModId = parseInt(dep.projectId)
       if (isNaN(depModId)) return
-      const url = await window.electronAPI?.modsCurseforgeDownloadUrl(Number(version.id), depModId)
+      const url = await window.electrobunAPI?.modsCurseforgeDownloadUrl(Number(version.id), depModId)
       if (!url) return
       const fileName = version.fileName || url.split("/").pop()?.split("?")[0] || `${dep.projectId}.jar`
       await doDownloadMod(url, fileName, {
@@ -376,93 +393,11 @@ export const InstanceDetail = memo(function InstanceDetail(props: InstanceDetail
         modId: depModId,
         matchSlug: dep.slug || dep.projectId,
       })
-    } catch { /* skip failed dep */ }
+    } catch (error) {
+      if (isContentDownloadCancelled(error)) throw error
+      // Остальные ошибки необязательной зависимости не прерывают установку.
+    }
   }, [doDownloadMod, resolveDepVersion])
-
-  /** План установки зависимостей: что именно поставим — показываем в окне подтверждения. */
-  const planDeps = useCallback(async (deps: ModDependency[], source: "modrinth" | "curseforge"): Promise<DepPlanItem[]> => {
-    const items: DepPlanItem[] = []
-    for (const dep of deps) {
-      const version = await resolveDepVersion(dep, source)
-      // У зависимостей из API обычно нет имени и иконки — в окне подтверждения
-      // был виден только slug («iris»). Подтягиваем проект.
-      let resolved = dep
-      if (!dep.name || !dep.iconUrl) {
-        try {
-          if (source === "modrinth") {
-            const details = await window.electronAPI?.modsModrinthDetails(dep.slug || dep.projectId)
-            if (details) resolved = { ...dep, name: dep.name || details.name, iconUrl: dep.iconUrl || details.iconUrl }
-          } else {
-            const modId = Number.parseInt(dep.projectId, 10)
-            const details = Number.isInteger(modId) ? await window.electronAPI?.modsCurseforgeDetails(modId) : null
-            if (details) resolved = { ...dep, name: dep.name || details.name, iconUrl: dep.iconUrl || details.iconUrl }
-          }
-        } catch { /* нет данных о проекте — показываем как есть */ }
-      }
-      items.push({
-        dep: resolved,
-        version,
-        // Требование API совпало с найденной версией — значит версия обязательная.
-        pinned: Boolean(dep.versionId && version?.id === dep.versionId),
-      })
-    }
-    return items
-  }, [resolveDepVersion])
-
-  const installVersionWithDeps = useCallback(async (
-    version: ModVersion,
-    source: Source,
-    selectedDeps: ModDependency[],
-    overrideMetadata?: { name?: string; description?: string; iconUrl?: string; projectId?: string; modId?: number },
-    onPhase?: (phase: "resolving" | "confirm" | "downloading" | "deps" | null) => void,
-    depVersions?: Map<string, ModVersion>,
-  ) => {
-    if (source === "ftb") {
-      return
-    }
-    onPhase?.("downloading")
-    const meta = {
-      name: overrideMetadata?.name || selectedDetails?.name,
-      description: overrideMetadata?.description || selectedDetails?.summary,
-      iconUrl: overrideMetadata?.iconUrl || selectedDetails?.iconUrl,
-    }
-    if (source === "modrinth") {
-      const file = version.files?.[0]
-      if (file?.url) {
-        await doDownloadMod(file.url, file.filename || version.fileName || `${version.id}.jar`, {
-          ...meta,
-          version: version.name || version.id,
-          source: "modrinth",
-          projectId: overrideMetadata?.projectId || selectedDetails?.projectId || selectedDetails?.id,
-          matchSlug: selectedDetails?.slug || overrideMetadata?.projectId,
-        })
-      }
-    } else {
-      const modId = overrideMetadata?.modId || selectedDetails?.modId
-      if (modId) {
-        const url = await window.electronAPI?.modsCurseforgeDownloadUrl(Number(version.id), modId)
-        if (url) {
-          const fileName = version.fileName || url.split("/").pop()?.split("?")[0] || `mod-${version.id}.jar`
-          await doDownloadMod(url, fileName, {
-            ...meta,
-            version: version.name || version.id,
-            source: "curseforge",
-            projectId: overrideMetadata?.projectId || selectedDetails?.projectId,
-            modId,
-            matchSlug: selectedDetails?.slug || String(modId),
-          })
-        }
-      }
-    }
-
-    // Зависимости качаются по одной и тоже занимают время — подписываем этот этап.
-    if (selectedDeps.length > 0) onPhase?.("deps")
-    for (const dep of selectedDeps) {
-      // Ставим ровно те версии, которые показали в окне подтверждения.
-      await doDownloadDep(dep, source, depVersions?.get(dep.projectId))
-    }
-    onPhase?.(null)
-  }, [selectedDetails, doDownloadMod, doDownloadDep])
 
   /**
    * Обязательные зависимости версии. CurseForge и Modrinth заполняют их не всегда:
@@ -477,15 +412,15 @@ export const InstanceDetail = memo(function InstanceDetail(props: InstanceDetail
   ): Promise<ModDependency[]> => {
     const declared = version.dependencies ?? []
     if (declared.some(dep => dep.dependencyType === "required")) {
-      return await window.electronAPI?.modsResolveDependencies(version, source) ?? declared
+      return await window.electrobunAPI?.modsResolveDependencies(version, source) ?? declared
     }
 
     const url = source === "modrinth"
       ? version.files?.[0]?.url
-      : modId ? await window.electronAPI?.modsCurseforgeDownloadUrl(Number(version.id), modId) : null
+      : modId ? await window.electrobunAPI?.modsCurseforgeDownloadUrl(Number(version.id), modId) : null
     if (!url) return declared
 
-    const inspected = await window.electronAPI?.modsInspectJarDependencies(url, source)
+    const inspected = await window.electrobunAPI?.modsInspectJarDependencies(url, source)
     const fromJar = inspected?.dependencies ?? []
     if (fromJar.length > 0) {
       console.info(`[deps] зависимости «${inspected?.modId ?? "mod"}» взяты из jar: ${fromJar.map(dep => dep.slug || dep.projectId).join(", ")}`)
@@ -493,6 +428,110 @@ export const InstanceDetail = memo(function InstanceDetail(props: InstanceDetail
     }
     return declared
   }, [])
+
+  /** План установки зависимостей: что именно поставим — показываем в окне подтверждения. */
+  const planDeps = useCallback(async (deps: ModDependency[], source: "modrinth" | "curseforge"): Promise<DepPlanItem[]> => {
+    const items: DepPlanItem[] = []
+    const queue = [...deps]
+    const seen = new Set<string>()
+    while (queue.length > 0) {
+      const dep = queue.shift()!
+      const key = dep.projectId || dep.slug || dep.versionId
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      if (activeBuild.mods.some(installed => isInstalledBuildMod(installed, source, dep.projectId, source === "curseforge" ? Number(dep.projectId) : undefined, dep.slug || dep.projectId))) continue
+      const version = await resolveDepVersion(dep, source)
+      // У зависимостей из API обычно нет имени и иконки — в окне подтверждения
+      // был виден только slug («iris»). Подтягиваем проект.
+      let resolved = dep
+      if (!dep.name || !dep.iconUrl) {
+        try {
+          if (source === "modrinth") {
+            const details = await window.electrobunAPI?.modsModrinthDetails(dep.slug || dep.projectId)
+            if (details) resolved = { ...dep, name: dep.name || details.name, iconUrl: dep.iconUrl || details.iconUrl }
+          } else {
+            const modId = Number.parseInt(dep.projectId, 10)
+            const details = Number.isInteger(modId) ? await window.electrobunAPI?.modsCurseforgeDetails(modId) : null
+            if (details) resolved = { ...dep, name: dep.name || details.name, iconUrl: dep.iconUrl || details.iconUrl }
+          }
+        } catch { /* нет данных о проекте — показываем как есть */ }
+      }
+      items.push({
+        dep: resolved,
+        version,
+        // Требование API совпало с найденной версией — значит версия обязательная.
+        pinned: Boolean(dep.versionId && version?.id === dep.versionId),
+      })
+      if (version) {
+        const children = await resolveRequiredDeps(version, source, source === "curseforge" ? Number(dep.projectId) : undefined)
+        const required = children.filter(child => child.dependencyType === "required")
+        queue.push(...await filterDepsForBuild(required, source))
+      }
+    }
+    return items
+  }, [activeBuild.mods, filterDepsForBuild, isInstalledBuildMod, resolveDepVersion, resolveRequiredDeps])
+
+  const installVersionWithDeps = useCallback(async (
+    version: ModVersion,
+    source: Source,
+    selectedDeps: ModDependency[],
+    overrideMetadata?: { name?: string; description?: string; iconUrl?: string; projectId?: string; modId?: number },
+    onPhase?: (phase: "resolving" | "confirm" | "downloading" | "deps" | null) => void,
+    depVersions?: Map<string, ModVersion>,
+  ) => {
+    if (source === "ftb") {
+      return false
+    }
+    const finishMutation = beginContentMutation(activeBuild.id)
+    try {
+    onPhase?.("downloading")
+    const meta = {
+      name: overrideMetadata?.name || selectedDetails?.name,
+      description: overrideMetadata?.description || selectedDetails?.summary,
+      iconUrl: overrideMetadata?.iconUrl || selectedDetails?.iconUrl,
+    }
+    let installed = false
+    if (source === "modrinth") {
+      const file = version.files?.[0]
+      const fileUrl = file?.url || version.downloadUrl
+      if (fileUrl) {
+        installed = await doDownloadMod(fileUrl, file?.filename || version.fileName || `${version.id}.jar`, {
+          ...meta,
+          version: version.name || version.id,
+          source: "modrinth",
+          projectId: overrideMetadata?.projectId || selectedDetails?.projectId || selectedDetails?.id,
+          matchSlug: selectedDetails?.slug || overrideMetadata?.projectId,
+        })
+      }
+    } else {
+      const modId = overrideMetadata?.modId || selectedDetails?.modId
+      if (modId) {
+        const url = await window.electrobunAPI?.modsCurseforgeDownloadUrl(Number(version.id), modId)
+        if (url) {
+          const fileName = version.fileName || url.split("/").pop()?.split("?")[0] || `mod-${version.id}.jar`
+          installed = await doDownloadMod(url, fileName, {
+            ...meta,
+            version: version.name || version.id,
+            source: "curseforge",
+            projectId: overrideMetadata?.projectId || selectedDetails?.projectId,
+            modId,
+            matchSlug: selectedDetails?.slug || String(modId),
+          })
+        }
+      }
+    }
+
+    if (!installed) return false
+    // Зависимости качаются по одной и тоже занимают время — подписываем этот этап.
+    if (selectedDeps.length > 0) onPhase?.("deps")
+    for (const dep of selectedDeps) {
+      // Ставим ровно те версии, которые показали в окне подтверждения.
+      await doDownloadDep(dep, source, depVersions?.get(dep.projectId))
+    }
+    onPhase?.(null)
+    return true
+    } finally { finishMutation() }
+  }, [activeBuild.id, beginContentMutation, selectedDetails, doDownloadMod, doDownloadDep])
 
   /**
    * Спрашиваем про зависимости и ждём ответа в том же промисе: пока окно открыто,
@@ -544,7 +583,7 @@ export const InstanceDetail = memo(function InstanceDetail(props: InstanceDetail
       return { projectId: "iris", dependencyType: "required", slug: "iris", name: "Iris Shaders" }
     }
     try {
-      const found = await window.electronAPI?.modsCurseforgeSearch("iris shaders", undefined, activeBuild.version, "fabric", undefined, 0)
+      const found = await window.electrobunAPI?.modsCurseforgeSearch("iris shaders", undefined, activeBuild.version, "fabric", undefined, 0)
       const hit = (found?.results ?? []).find(item =>
         /^iris/i.test(String(item.slug ?? "")) || /^iris\s*shaders$/i.test(String(item.name ?? "").trim()))
       if (hit?.modId) {
@@ -559,20 +598,21 @@ export const InstanceDetail = memo(function InstanceDetail(props: InstanceDetail
     mod: ModSearchResult,
     type: "resourcepacks" | "shaders",
     onPhase?: (phase: "resolving" | "confirm" | "downloading" | "deps" | null) => void,
-  ) => {
+    requestedVersion?: ModVersion,
+  ): Promise<boolean> => {
     const source = mod.source as Source
     onPhase?.("resolving")
 
     if (type === "shaders" && source !== "ftb") {
       // Требования шейдеров берём из двух мест: CF отдаёт их в dependencies
       // файла, Modrinth — в loaders (`iris`/`optifine`). Jar не читаем: это zip.
-      let version: ModVersion | undefined
-      if (source === "modrinth") {
+      let version: ModVersion | undefined = requestedVersion
+      if (!version && source === "modrinth") {
         // У шейдеров в loaders стоит iris/optifine, а не загрузчик сборки, поэтому
         // совпадение по загрузчику не проверяем — иначе версия не находится вовсе.
-        version = pickCompatibleVersion(await window.electronAPI?.modsModrinthVersions(mod.projectId ?? mod.slug), activeBuild, false)
-      } else if (source === "curseforge" && mod.modId) {
-        const details = await window.electronAPI?.modsCurseforgeDetails(mod.modId)
+        version = pickCompatibleVersion(await window.electrobunAPI?.modsModrinthVersions(mod.projectId ?? mod.slug), activeBuild, false)
+      } else if (!version && source === "curseforge" && mod.modId) {
+        const details = await window.electrobunAPI?.modsCurseforgeDetails(mod.modId)
         version = pickCompatibleVersion(details?.versions ?? [], activeBuild, false)
       }
 
@@ -587,19 +627,18 @@ export const InstanceDetail = memo(function InstanceDetail(props: InstanceDetail
           onPhase?.("confirm")
           const plan = await planDeps(installable, source)
           const approved = await askAboutDeps(mod.name, mod.iconUrl, source, plan)
-          if (approved) {
-            onPhase?.("deps")
-            for (const item of approved) {
-              await doDownloadDep(item.dep, source, item.version)
-            }
+          if (!approved) { onPhase?.(null); return false }
+          onPhase?.("deps")
+          for (const item of approved) {
+            await doDownloadDep(item.dep, source, item.version)
           }
         }
       }
     }
 
     onPhase?.("downloading")
-    await addContentToBuild(activeBuild.id, type, mod)
-    onPhase?.(null)
+    try { return await addContentToBuild(activeBuild.id, type, mod, requestedVersion) }
+    finally { onPhase?.(null) }
   }, [activeBuild, addContentToBuild, askAboutDeps, buildIrisDep, doDownloadDep, filterDepsForBuild, isInstalledBuildMod, planDeps, shaderNeedsIris])
 
   const installModToBuild = useCallback(async (
@@ -617,69 +656,71 @@ export const InstanceDetail = memo(function InstanceDetail(props: InstanceDetail
       itemName: mod.name,
     })
 
-    // Сначала сетевые запросы: версии, потом зависимости. Это несколько секунд,
-    // поэтому этап подписан — иначе прогресс «висит» без объяснений.
-    onPhase?.("resolving")
+    try {
+      // Сначала сетевые запросы: версии, потом зависимости. Это несколько секунд,
+      // поэтому этап подписан — иначе прогресс «висит» без объяснений.
+      onPhase?.("resolving")
 
-    let selectedVersion: ModVersion | undefined
-    if (source === "modrinth") {
-      const versions = await window.electronAPI?.modsModrinthVersions(mod.projectId ?? mod.slug)
-      selectedVersion = pickCompatibleVersion(versions, activeBuild)
-    } else if (source === "curseforge" && mod.modId) {
-      const details = await window.electronAPI?.modsCurseforgeDetails(mod.modId)
-      selectedVersion = pickCompatibleVersion(details?.versions ?? [], activeBuild)
-    }
+      let selectedVersion: ModVersion | undefined
+      if (source === "modrinth") {
+        const versions = await window.electrobunAPI?.modsModrinthVersions(mod.projectId ?? mod.slug)
+        selectedVersion = pickCompatibleVersion(versions, activeBuild)
+      } else if (source === "curseforge" && mod.modId) {
+        const details = await window.electrobunAPI?.modsCurseforgeDetails(mod.modId)
+        selectedVersion = pickCompatibleVersion(details?.versions ?? [], activeBuild)
+      }
 
-    if (!selectedVersion) {
-      endContentInstall()
-      return
-    }
-
-    const overrideMeta = { name: mod.name, description: mod.summary, iconUrl: mod.iconUrl, projectId: mod.projectId, modId: mod.modId }
-
-    const resolvedDeps = await resolveRequiredDeps(selectedVersion, source, mod.modId)
-    const missingRequiredDeps = await filterDepsForBuild(resolvedDeps.filter(dep => {
-      if (dep.dependencyType !== "required") return false
-      return !activeBuild.mods.some(installedMod =>
-        isInstalledBuildMod(installedMod, source, dep.projectId, source === "curseforge" ? Number(dep.projectId) : undefined, dep.slug || dep.projectId),
-      )
-    }), source)
-
-    // Зависимости обязательные, выбирать нечего — спрашиваем согласие одним окном.
-    // Версии подбираем заранее, чтобы в окне было видно, что именно поставим.
-    let depsToInstall = missingRequiredDeps
-    let depVersions: Map<string, ModVersion> | undefined
-    if (missingRequiredDeps.length > 0) {
-      onPhase?.("confirm")
-      updateContentInstall({ message: t("mods.install.phaseConfirm") })
-      const plan = await planDeps(missingRequiredDeps, source)
-      const approved = await askAboutDeps(mod.name, mod.iconUrl, source, plan)
-      if (!approved) {
-        // Отказ: окно закрылось, установка не началась.
+      if (!selectedVersion) {
         endContentInstall()
-        onPhase?.(null)
         return
       }
-      depsToInstall = approved.map(item => item.dep)
-      depVersions = new Map(approved.filter(item => item.version).map(item => [item.dep.projectId, item.version!]))
-    }
 
-    // Текст уведомления ведём по тем же этапам, что подпись на карточке:
-    // до этого «зависимости» сразу перекрывались «скачиванием».
-    const reportPhase = (phase: "resolving" | "confirm" | "downloading" | "deps" | null) => {
-      onPhase?.(phase)
-      if (phase === "downloading") {
-        updateContentInstall({ message: t("builds.mod.downloading", { name: mod.name }) })
-      } else if (phase === "deps") {
-        updateContentInstall({ message: t("mods.install.phaseDeps") })
+      const overrideMeta = { name: mod.name, description: mod.summary, iconUrl: mod.iconUrl, projectId: mod.projectId, modId: mod.modId }
+
+      // Версия уже выбрана. Проверка зависимостей может скачивать JAR, поэтому
+      // карточка и уведомление должны покинуть этап поиска до начала проверки.
+      onPhase?.("downloading")
+      updateContentInstall({ message: t("builds.mod.downloading", { name: mod.name }) })
+      const resolvedDeps = await resolveRequiredDeps(selectedVersion, source, mod.modId)
+      const missingRequiredDeps = await filterDepsForBuild(resolvedDeps.filter(dep => {
+        if (dep.dependencyType !== "required") return false
+        return !activeBuild.mods.some(installedMod =>
+          isInstalledBuildMod(installedMod, source, dep.projectId, source === "curseforge" ? Number(dep.projectId) : undefined, dep.slug || dep.projectId),
+        )
+      }), source)
+
+      // Зависимости обязательные, выбирать нечего — спрашиваем согласие одним окном.
+      // Версии подбираем заранее, чтобы в окне было видно, что именно поставим.
+      let depsToInstall = missingRequiredDeps
+      let depVersions: Map<string, ModVersion> | undefined
+      if (missingRequiredDeps.length > 0) {
+        onPhase?.("confirm")
+        updateContentInstall({ message: t("mods.install.phaseConfirm") })
+        const plan = await planDeps(missingRequiredDeps, source)
+        const approved = await askAboutDeps(mod.name, mod.iconUrl, source, plan)
+        if (!approved) {
+          // Отказ: окно закрылось, установка не началась.
+          endContentInstall()
+          onPhase?.(null)
+          return
+        }
+        depsToInstall = approved.map(item => item.dep)
+        depVersions = new Map(approved.filter(item => item.version).map(item => [item.dep.projectId, item.version!]))
       }
-    }
 
-    try {
+      // Текст уведомления ведём по тем же этапам, что подпись на карточке:
+      // до этого «зависимости» сразу перекрывались «скачиванием».
+      const reportPhase = (phase: "resolving" | "confirm" | "downloading" | "deps" | null) => {
+        onPhase?.(phase)
+        if (phase === "downloading") {
+          updateContentInstall({ message: t("builds.mod.downloading", { name: mod.name }) })
+        } else if (phase === "deps") {
+          updateContentInstall({ message: t("mods.install.phaseDeps") })
+        }
+      }
+
       await installVersionWithDeps(selectedVersion, source, depsToInstall, overrideMeta, reportPhase, depVersions)
-    } finally {
-      endContentInstall()
-    }
+    } finally { endContentInstall() }
   }, [activeBuild, activeBuild.id, activeBuild.mods, askAboutDeps, beginContentInstall, endContentInstall, filterDepsForBuild, installVersionWithDeps, isInstalledBuildMod, planDeps, resolveRequiredDeps, t, updateContentInstall])
 
   const handleInstallVersion = useCallback(async (version: ModVersion): Promise<boolean> => {
@@ -688,56 +729,64 @@ export const InstanceDetail = memo(function InstanceDetail(props: InstanceDetail
     if (selectedDetails.source === "ftb") {
       return false
     }
-
     const source = selectedDetails.source
+
+    // Окно версий общее для модов, ресурспаков и шейдеров. ZIP не должен
+    // уходить через saveModToIntent и появляться только в списке mods.
+    const contentType = detailsKind === "resourcepack" ? "resourcepacks"
+      : detailsKind === "shader" ? "shaders" : null
+    if (contentType) {
+      const existing = activeBuild[contentType].find(item => isInstalledBuildMod(item, source,
+        selectedDetails.projectId ?? selectedDetails.id, selectedDetails.modId, selectedDetails.slug))
+      if (existing) return updateItemVersion(activeBuild.id, contentType, existing.id, version)
+      return installContentToBuild(selectedDetails, contentType, undefined, version)
+    }
+
     beginContentInstall({
       title: t("builds.mod.installing"),
       message: t("mods.install.phaseResolving"),
       itemName: selectedDetails.name,
     })
-    const resolvedDeps = await resolveRequiredDeps(version, source, selectedDetails.modId)
-    const missingRequiredDeps = await filterDepsForBuild(resolvedDeps.filter(dep => {
-      if (dep.dependencyType !== "required") return false
-      return !activeBuild.mods.some(mod => isInstalledBuildMod(
-        mod,
-        source,
-        dep.projectId,
-        source === "curseforge" ? Number(dep.projectId) : undefined,
-        dep.slug || dep.projectId,
-      ))
-    }), source)
-
-    // Зависимости обязательные — одно окно подтверждения, затем установка в списке модов.
-    let depsToInstall = missingRequiredDeps
-    let depVersions: Map<string, ModVersion> | undefined
-    if (missingRequiredDeps.length > 0) {
-      updateContentInstall({ message: t("mods.install.phaseConfirm") })
-      const plan = await planDeps(missingRequiredDeps, source)
-      const approved = await askAboutDeps(selectedDetails.name, selectedDetails.iconUrl, source, plan)
-      if (!approved) {
-        endContentInstall()
-        return false
-      }
-      depsToInstall = approved.map(item => item.dep)
-      depVersions = new Map(approved.filter(item => item.version).map(item => [item.dep.projectId, item.version!]))
-    }
-
-    // Текст уведомления ведём по тем же этапам, что подпись на карточке.
-    const reportPhase = (phase: "resolving" | "confirm" | "downloading" | "deps" | null) => {
-      if (phase === "downloading") {
-        updateContentInstall({ message: t("builds.mod.downloading", { name: selectedDetails.name }) })
-      } else if (phase === "deps") {
-        updateContentInstall({ message: t("mods.install.phaseDeps") })
-      }
-    }
-
     try {
-      await installVersionWithDeps(version, source, depsToInstall, undefined, reportPhase, depVersions)
-    } finally {
-      endContentInstall()
-    }
-    return true
-  }, [activeBuild.mods, askAboutDeps, beginContentInstall, endContentInstall, filterDepsForBuild, installVersionWithDeps, isInstalledBuildMod, planDeps, resolveRequiredDeps, selectedDetails, t, updateContentInstall])
+      const resolvedDeps = await resolveRequiredDeps(version, source, selectedDetails.modId)
+      const missingRequiredDeps = await filterDepsForBuild(resolvedDeps.filter(dep => {
+        if (dep.dependencyType !== "required") return false
+        return !activeBuild.mods.some(mod => isInstalledBuildMod(
+          mod,
+          source,
+          dep.projectId,
+          source === "curseforge" ? Number(dep.projectId) : undefined,
+          dep.slug || dep.projectId,
+        ))
+      }), source)
+
+      // Зависимости обязательные — одно окно подтверждения, затем установка в списке модов.
+      let depsToInstall = missingRequiredDeps
+      let depVersions: Map<string, ModVersion> | undefined
+      if (missingRequiredDeps.length > 0) {
+        updateContentInstall({ message: t("mods.install.phaseConfirm") })
+        const plan = await planDeps(missingRequiredDeps, source)
+        const approved = await askAboutDeps(selectedDetails.name, selectedDetails.iconUrl, source, plan)
+        if (!approved) {
+          endContentInstall()
+          return false
+        }
+        depsToInstall = approved.map(item => item.dep)
+        depVersions = new Map(approved.filter(item => item.version).map(item => [item.dep.projectId, item.version!]))
+      }
+
+      // Текст уведомления ведём по тем же этапам, что подпись на карточке.
+      const reportPhase = (phase: "resolving" | "confirm" | "downloading" | "deps" | null) => {
+        if (phase === "downloading") {
+          updateContentInstall({ message: t("builds.mod.downloading", { name: selectedDetails.name }) })
+        } else if (phase === "deps") {
+          updateContentInstall({ message: t("mods.install.phaseDeps") })
+        }
+      }
+
+      return await installVersionWithDeps(version, source, depsToInstall, undefined, reportPhase, depVersions)
+    } finally { endContentInstall() }
+  }, [activeBuild, detailsKind, installContentToBuild, updateItemVersion, askAboutDeps, beginContentInstall, endContentInstall, filterDepsForBuild, installVersionWithDeps, isInstalledBuildMod, planDeps, resolveRequiredDeps, selectedDetails, t, updateContentInstall])
 
   /**
    * Версия открытого в окне мода, если он уже стоит в сборке. Нужна, чтобы
@@ -747,15 +796,16 @@ export const InstanceDetail = memo(function InstanceDetail(props: InstanceDetail
     if (!selectedDetails) return undefined
     const source = selectedDetails.source
     if (source !== "modrinth" && source !== "curseforge") return undefined
-    const match = activeBuild.mods.find(installedMod => isInstalledBuildMod(
+    const items = detailsKind === "resourcepack" ? activeBuild.resourcepacks : detailsKind === "shader" ? activeBuild.shaders : activeBuild.mods
+    const match = items.find(installedMod => isInstalledBuildMod(
       installedMod,
       source,
       selectedDetails.projectId ?? selectedDetails.id,
       source === "curseforge" ? selectedDetails.modId : undefined,
       selectedDetails.slug || selectedDetails.projectId,
     ))
-    return match?.version
-  }, [selectedDetails, activeBuild.mods, isInstalledBuildMod])
+    return match?.versionId || match?.version
+  }, [selectedDetails, detailsKind, activeBuild.mods, activeBuild.resourcepacks, activeBuild.shaders, isInstalledBuildMod])
 
   const handleUpdateModpack = useCallback(async (version: ModVersion): Promise<boolean> => {
     if (!selectedDetails || selectedDetails.source === "ftb") return false
@@ -765,35 +815,46 @@ export const InstanceDetail = memo(function InstanceDetail(props: InstanceDetail
 
   return (
     <div data-ui="instance-instance-detail-div-1" data-component="instance-detail" id="build-detail-page" data-tab={detailTab} className="h-full flex flex-col">
-      <div data-ui="instance-instance-detail-div-2" className={`launcher-page-header flex items-center justify-between gap-4 mb-5 ${CONTENT_ENTER_DELAYED}`}>
-        <div data-ui="instance-instance-detail-div-3" className="flex items-center gap-4">
+      <div data-ui="instance-instance-detail-div-2" className={`launcher-page-header flex flex-wrap items-center justify-between gap-x-6 gap-y-4 mb-5 ${CONTENT_ENTER_DELAYED}`}>
+        <div data-ui="instance-instance-detail-div-3" className="flex min-w-0 max-w-full items-center gap-3">
           <button data-ui="instance-instance-detail-button-1"
             type="button"
             onClick={goToMyBuilds}
-            className="p-2 rounded-xl bg-muted/50 hover:bg-muted transition-colors"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-muted/50 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <IconArrowLeft className="w-5 h-5" />
           </button>
-          <div data-ui="instance-instance-detail-div-4" className="flex items-center gap-3 rounded-2xl bg-muted/50 px-4 py-2.5">
-            {buildHasImage && (
-              <div data-ui="instance-instance-detail-div-5" className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0">
-                <EntityIcon src={activeBuild.icon} className="w-full h-full p-1 text-primary" imgClassName="w-full h-full object-cover" />
+          <div data-ui="instance-instance-detail-div-4" className="flex w-fit min-w-0 max-w-full sm:max-w-[460px] items-center gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2.5">
+            <div data-ui="instance-instance-detail-div-5" className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl">
+              {buildHasImage ? (
+                <EntityIcon src={activeBuild.icon} className="h-full w-full p-1 text-primary" imgClassName="h-full w-full object-cover" />
+              ) : <LoaderIcon loaderId={activeBuild.modLoader} className="h-10 w-10 text-primary" />}
+            </div>
+            <div data-ui="instance-instance-detail-div-6" className="flex min-w-0 flex-1 flex-col gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <h1 data-ui="instance-instance-detail-h1-1" className="line-clamp-2 w-full [overflow-wrap:anywhere] text-xl font-bold leading-tight text-foreground">{activeBuild.name}</h1>
+
               </div>
-            )}
-            <div data-ui="instance-instance-detail-div-6" className="flex flex-col">
-              <h1 data-ui="instance-instance-detail-h1-1" className="text-xl font-bold text-foreground">{activeBuild.name}</h1>
-              <div data-ui="instance-instance-detail-div-7" className="flex items-center gap-2 text-sm text-muted-foreground">
-                <LoaderIcon loaderId={activeBuild.modLoader} className="w-4 h-4 text-muted-foreground inline-block flex-shrink-0" />
-                <span data-ui="instance-instance-detail-span-1">{loaderLabel(activeBuild.modLoader)} · {activeBuild.version}</span>
+              <div data-ui="instance-instance-detail-div-7" className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                <span data-ui="instance-instance-detail-span-1" className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-2 py-0.5">
+                  <LoaderIcon loaderId={activeBuild.modLoader} className="h-3.5 w-3.5 shrink-0 text-primary" />
+                  {loaderLabel(activeBuild.modLoader)}
+                </span>
+                <span className="rounded-lg border border-border bg-muted/30 px-2 py-0.5 tabular-nums">{activeBuild.version}</span>
+
               </div>
             </div>
-          </div>
+
           <button data-ui="instance-open-agent-button" type="button" title={t("agent.askAboutBuild")} aria-label={t("agent.askAboutBuild")} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => {
             const { icon, coverImage, customEnv, mods, resourcepacks, shaders, installedMods, ...context } = activeBuild
             void openAgent([{ id: `build:${activeBuild.id}`, kind: "build", name: activeBuild.name, iconUrl: icon || undefined, content: JSON.stringify(context, null, 2) }])
           }}>
             <IconRobot className="w-5 h-5" aria-hidden="true" />
           </button>
+          </div>
+
+
+
         </div>
         <div data-ui="instance-instance-detail-div-8" className="flex flex-col gap-1">
           <div data-ui="instance-instance-detail-div-9" className="flex gap-0.5 p-1 rounded-xl bg-muted/30 border border-border/50">
@@ -870,6 +931,7 @@ export const InstanceDetail = memo(function InstanceDetail(props: InstanceDetail
 
       {detailTab === "mods" && (
         <InstanceContentTab
+          key={activeBuild.id+":mods"}
           activeBuild={activeBuild}
           title={t("buildDetail.search.title")}
           placeholder={t("buildDetail.search.modsPlaceholder")}
@@ -900,6 +962,7 @@ export const InstanceDetail = memo(function InstanceDetail(props: InstanceDetail
           addContentToBuild={addContentToBuild}
           installContentToBuild={installContentToBuild}
           removeContentFromBuild={removeContentFromBuild}
+          beginContentMutation={beginContentMutation}
           installModToBuild={installModToBuild}
           setBuilds={setBuilds}
           toggleItemEnabled={toggleItemEnabled}
@@ -909,6 +972,7 @@ export const InstanceDetail = memo(function InstanceDetail(props: InstanceDetail
 
       {detailTab === "resourcepacks" && (
         <InstanceContentTab
+          key={activeBuild.id+":resourcepacks"}
           activeBuild={activeBuild}
           title={t("buildDetail.search.title")}
           placeholder={t("buildDetail.search.resourcepacksPlaceholder")}
@@ -939,6 +1003,7 @@ export const InstanceDetail = memo(function InstanceDetail(props: InstanceDetail
           addContentToBuild={addContentToBuild}
           installContentToBuild={installContentToBuild}
           removeContentFromBuild={removeContentFromBuild}
+          beginContentMutation={beginContentMutation}
           installModToBuild={installModToBuild}
           setBuilds={setBuilds}
           toggleItemEnabled={toggleItemEnabled}
@@ -948,6 +1013,7 @@ export const InstanceDetail = memo(function InstanceDetail(props: InstanceDetail
 
       {detailTab === "shaders" && (
         <InstanceContentTab
+          key={activeBuild.id+":shaders"}
           activeBuild={activeBuild}
           title={t("buildDetail.search.title")}
           placeholder={t("buildDetail.search.shadersPlaceholder")}
@@ -978,6 +1044,7 @@ export const InstanceDetail = memo(function InstanceDetail(props: InstanceDetail
           addContentToBuild={addContentToBuild}
           installContentToBuild={installContentToBuild}
           removeContentFromBuild={removeContentFromBuild}
+          beginContentMutation={beginContentMutation}
           installModToBuild={installModToBuild}
           setBuilds={setBuilds}
           toggleItemEnabled={toggleItemEnabled}

@@ -1,8 +1,9 @@
 import { ImportProgressPanel } from "./import-progress-panel"
+import { IconX as LauncherCancelIcon } from "@tabler/icons-react"
 import { mergeImportProgress } from "./import-progress-model"
 import { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import { useTranslation } from "react-i18next"
-import { IconArrowLeft, IconCamera, IconCheck, IconColorSwatch, IconDownload, IconFolder, IconLoader2, IconPlus, IconRefresh, IconSettings, IconTrash } from "@tabler/icons-react"
+import { IconArrowLeft, IconCamera, IconCheck, IconColorSwatch, IconDownload, IconFolder, IconKey, IconLoader2, IconPlus, IconRefresh, IconSettings, IconTrash } from "@tabler/icons-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogTrigger } from "@/components/ui/dialog"
 import { ModalTitleIcon } from "@/components/ui/modal-title-icon"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -15,6 +16,9 @@ import { useHomeVersions } from "@/src/hooks/use-home-versions"
 import { useLoaderVersionOptions } from "@/src/hooks/use-loader-version-options"
 import type { ImportProgress } from "@xnlc/types"
 import type { LocalZipImportFormat } from "./use-import"
+import { useShare } from "./shared/use-share"
+import { ShareInstallDialog } from "./shared/share-install-dialog"
+import { ShareAccessNotice } from "./shared/share-access-notice"
 
 interface InstanceCreateDialogProps {
   open: boolean
@@ -38,7 +42,7 @@ const SOURCE_ICON_SRC: Record<ImportSource, string> = {
 
 export function InstanceCreateDialog({ open, setOpen, onCreate, onImported, onImportFile }: InstanceCreateDialogProps) {
   const { t } = useTranslation()
-  const [mode, setMode] = useState<"create" | "import">("create")
+  const [mode, setMode] = useState<"create" | "import" | "invitation">("create")
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [modLoader, setModLoader] = useState(BUILD_MOD_LOADERS[0].id)
@@ -66,7 +70,7 @@ export function InstanceCreateDialog({ open, setOpen, onCreate, onImported, onIm
       setModLoader(BUILD_MOD_LOADERS[0].id)
       setLoaderVersion("")
       setImportProgress(null)
-      void window.electronAPI?.discoverImportableInstances?.().then((instances) => {
+      void window.electrobunAPI?.discoverImportableInstances?.().then((instances) => {
         const next = instances ?? []
       setImportableInstances(next)
       setSelectedImportIds([])
@@ -76,7 +80,7 @@ export function InstanceCreateDialog({ open, setOpen, onCreate, onImported, onIm
 
   useEffect(() => {
     if (!open) { setImportProgress(null); return }
-    const off = window.electronAPI?.onImportProgress?.((progress) => {
+    const off = window.electrobunAPI?.onImportProgress?.((progress) => {
       setImportProgress(previous => mergeImportProgress(previous, progress))
       // Первое событие прогресса = файл уже выбран в системном окне: закрываем
       // диалог сразу, иначе «Локальный импорт» висит поверх всего импорта.
@@ -149,7 +153,7 @@ export function InstanceCreateDialog({ open, setOpen, onCreate, onImported, onIm
     if (!selectedImportIds.length) return
     setImporting(true)
     try {
-      await window.electronAPI?.importLauncherInstances(selectedImportIds)
+      await window.electrobunAPI?.importLauncherInstances(selectedImportIds)
       await onImported()
       setOpen(false)
       reset()
@@ -173,10 +177,10 @@ export function InstanceCreateDialog({ open, setOpen, onCreate, onImported, onIm
   }
 
   const handlePickCustomPath = useCallback(async (source: ImportSource) => {
-    const pickedPath = await window.electronAPI?.pickFolder(t("builds.pickFolderTitle", { source: sourceNames[source] }))
+    const pickedPath = await window.electrobunAPI?.pickFolder(t("builds.pickFolderTitle", { source: sourceNames[source] }))
     if (!pickedPath) return
     setCustomPaths((prev) => ({ ...prev, [source]: pickedPath }))
-    const instances = await window.electronAPI?.discoverFromPath(source, pickedPath)
+    const instances = await window.electrobunAPI?.discoverFromPath(source, pickedPath)
     if (instances) {
       setImportableInstances((prev) => {
         const withoutSource = prev.filter((item) => item.source !== source)
@@ -225,9 +229,27 @@ export function InstanceCreateDialog({ open, setOpen, onCreate, onImported, onIm
               <IconDownload className="w-4 h-4" strokeWidth={1.75} />
               {t("builds.import")}
             </button>
+            <button
+              type="button"
+              data-action="install-shared-instance"
+              onClick={() => setMode("invitation")}
+              className={cn(
+                "flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px] font-medium transition-all duration-200",
+                mode === "invitation" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-muted/80"
+              )}
+            >
+              <IconKey className="w-4 h-4" strokeWidth={1.75} />
+              {t("builds.installInvitation")}
+            </button>
           </div>
 
-          {mode === "create" ? (
+          {mode === "invitation" ? (
+            <InvitationInstall onClose={() => setOpen(false)} onInstalled={() => {
+              setOpen(false)
+              reset()
+              void onImported()
+            }} />
+          ) : mode === "create" ? (
             <div data-ui="instance-instance-create-dialog-div-3" className="grid gap-4 rounded-2xl border border-border bg-card p-4">
               <div data-ui="instance-instance-create-dialog-div-4" className="flex items-center justify-center gap-4">
                 <div data-ui="instance-instance-create-dialog-div-5"
@@ -308,7 +330,7 @@ export function InstanceCreateDialog({ open, setOpen, onCreate, onImported, onIm
                         <IconArrowLeft className="h-4 w-4" strokeWidth={1.75} />
                       </button>
                       <div data-ui="instance-instance-create-dialog-div-14">
-                        <div data-ui="instance-instance-create-dialog-div-15" className="text-sm font-medium text-foreground">{sourceNames[selectedImportSource]}</div>
+                        <div data-ui="instance-instance-create-dialog-div-15" className="flex items-center gap-2 text-sm font-medium text-foreground"><img src={SOURCE_ICON_SRC[selectedImportSource]} alt="" className="size-5 shrink-0 object-contain" />{sourceNames[selectedImportSource]}</div>
                         <div data-ui="instance-instance-create-dialog-div-16" className="text-xs text-muted-foreground">{t("builds.chooseBuildsToImport")}</div>
                       </div>
                     </div>
@@ -402,8 +424,8 @@ export function InstanceCreateDialog({ open, setOpen, onCreate, onImported, onIm
               ) : (
                 <>
                   <div data-ui="instance-instance-create-dialog-div-31" className="rounded-2xl border border-border bg-muted/10 p-4">
-                    <div data-ui="instance-instance-create-dialog-div-32" className="text-sm font-medium text-foreground">{t("builds.localImport")}</div>
-                    <div data-ui="instance-instance-create-dialog-div-33" className="mt-1 text-xs text-muted-foreground">{t("builds.localImportDesc")}</div>
+                    <div data-ui="instance-instance-create-dialog-div-32" className="flex items-center gap-2 text-sm font-medium text-foreground"><IconDownload className="size-4 text-primary" strokeWidth={1.75} aria-hidden="true" />{t("builds.localImport")}</div>
+                    <div data-ui="instance-instance-create-dialog-div-33" className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{t("builds.localImportDesc")}</div>
 
                     <div data-ui="instance-instance-create-dialog-div-34" className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
                       <button data-ui="instance-instance-create-dialog-button-9"
@@ -477,8 +499,9 @@ export function InstanceCreateDialog({ open, setOpen, onCreate, onImported, onIm
             </div>
           )}
         </div>
-        <div data-ui="instance-instance-create-dialog-div-48" data-component="instance-create-dialog" className="flex justify-end gap-2">
-          <DialogClose className="px-4 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+        {mode !== "invitation" && <div data-ui="instance-instance-create-dialog-div-48" data-component="instance-create-dialog" className="flex justify-end gap-2">
+          <DialogClose className="inline-flex items-center justify-center gap-2 border border-border bg-muted/40 px-4 py-2.5 rounded-xl text-sm font-medium text-foreground hover:bg-muted transition-colors">
+            <LauncherCancelIcon className="size-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
             {t("settings.cancel")}
           </DialogClose>
           {mode === "create" && (
@@ -487,10 +510,18 @@ export function InstanceCreateDialog({ open, setOpen, onCreate, onImported, onIm
               {t("builds.createBuild")}
             </button>
           )}
-        </div>
+        </div>}
       </DialogContent>
 
       <IconPickerModal open={showIconPicker} onOpenChange={setShowIconPicker} value={icon} onChange={setIcon} />
     </Dialog>
   )
+}
+
+function InvitationInstall({ onClose, onInstalled }: { onClose(): void; onInstalled(): void }) {
+  const controller = useShare("")
+  const available = controller.data.eligible && controller.data.signedIn && !controller.data.wrongAccount
+  return available
+    ? <ShareInstallDialog controller={controller} onInstalled={onInstalled} onCancel={onClose} />
+    : <ShareAccessNotice controller={controller} onClose={onClose} />
 }

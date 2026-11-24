@@ -1,5 +1,4 @@
-import fs from "fs"
-import AdmZip from "adm-zip"
+import { withArchiveEntries } from "@xnlc/archives"
 import * as toml from "toml"
 
 export interface JarAnalysisResult {
@@ -22,6 +21,10 @@ const MODLOADER_IDS = [
   "paper", "spigot", "bukkit", "purpur", "folia",
   "sponge", "bungeecord", "velocity", "waterfall",
 ]
+
+/** Метаданные JAR читаются целиком: всё, что больше, заведомо не манифест. */
+const MAX_METADATA_ENTRY_SIZE = 2_000_000
+const METADATA_NAMES = new Set(["meta-inf/manifest.mf", "version.json", "meta-inf/version.json", "fabric.mod.json", "meta-inf/mods.toml", "meta-inf/neoforge.mods.toml", "meta-inf/installer.json"])
 
 function findMcVersionInText(text: string): string | null {
   const match = MC_VERSION_PATTERN.exec(text)
@@ -48,7 +51,7 @@ function normalizeLoader(label: string | null): { loaderId: string | null; loade
   return { loaderId: null, loaderLabel: label }
 }
 
-export function analyzeServerJar(jarPath: string): JarAnalysisResult {
+export async function analyzeServerJar(jarPath: string): Promise<JarAnalysisResult> {
   const result: JarAnalysisResult = {
     minecraftVersion: null,
     loaderId: null,
@@ -57,34 +60,31 @@ export function analyzeServerJar(jarPath: string): JarAnalysisResult {
     mainClass: null,
   }
 
-  if (!jarPath || !fs.existsSync(jarPath)) {
+  if (!jarPath) {
     result.error = "Файл не найден"
     return result
   }
 
-  let zip: any
+  let names: string[] = []
+  const contents = new Map<string, Buffer>()
   try {
-    zip = new AdmZip(jarPath)
-  } catch {
-    result.error = "Не является корректным JAR/ZIP файлом"
+    await withArchiveEntries(jarPath, async (infos, read) => {
+      names = infos.map(file => file.name)
+      for (const file of infos) {
+        const name = file.name.toLowerCase()
+        if (!file.directory && !file.symlink && METADATA_NAMES.has(name) && !contents.has(name)) {
+          contents.set(name, await read(file))
+        }
+      }
+    }, { maxEntrySize: MAX_METADATA_ENTRY_SIZE, maxTotalSize: 16 * 1024 * 1024 })
+  } catch (error) {
+    result.error = error instanceof Error && "code" in error && error.code === "IO_ERROR"
+      ? "Файл не найден" : "Не удалось прочитать метаданные JAR"
     return result
   }
 
-  const entries: any[] = zip.getEntries()
-  const names: string[] = entries.map((e: any) => e.entryName)
   const readText = (entryName: string): string | null => {
-    const entry = entries.find((e: any) => e.entryName === entryName)
-    if (!entry) return null
-    if (entry.header.size > 2_000_000) return null
-    try {
-      return entry.getData().toString("utf8")
-    } catch {
-      try {
-        return entry.getData().toString("latin1")
-      } catch {
-        return null
-      }
-    }
+    return contents.get(entryName.toLowerCase())?.toString("utf8") ?? null
   }
 
   // ---------- 1. MANIFEST.MF ----------
@@ -133,7 +133,7 @@ export function analyzeServerJar(jarPath: string): JarAnalysisResult {
 
   // ---------- 3. fabric.mod.json ----------
   for (const name of names) {
-    if (name.endsWith("fabric.mod.json")) {
+    if (name.toLowerCase() === "fabric.mod.json") {
       if (!result.loaderId) {
         result.loaderId = "fabric"
         result.loaderLabel = "Fabric"
@@ -142,7 +142,7 @@ export function analyzeServerJar(jarPath: string): JarAnalysisResult {
       if (text != null) {
         try {
           const data = JSON.parse(text)
-          result.modId = data.id ?? null
+          result.modId = typeof data.id === "string" && data.id.length ? data.id : null
           if (!result.minecraftVersion && data.depends?.minecraft) {
             const version = findMcVersionInText(String(data.depends.minecraft))
             if (version) result.minecraftVersion = version
@@ -154,20 +154,22 @@ export function analyzeServerJar(jarPath: string): JarAnalysisResult {
   }
 
   // ---------- 4. Forge/NeoForge mods.toml ----------
-  for (const name of names) {
-    if (name.endsWith("mods.toml")) {
+  for (const name of ["META-INF/neoforge.mods.toml", "META-INF/mods.toml"]) {
+    if (names.some(candidate => candidate.toLowerCase() === name.toLowerCase())) {
       if (!result.loaderId) {
-        result.loaderId = "forge"
-        result.loaderLabel = "Forge"
+        const neo = name.includes("neoforge")
+        result.loaderId = neo ? "neoforge" : "forge"
+        result.loaderLabel = neo ? "NeoForge" : "Forge"
       }
       const text = readText(name)
       if (text != null) {
         try {
           const data = toml.parse(text)
           const mods = Array.isArray(data.mods) ? data.mods : []
-          if (mods[0]?.modId) result.modId = mods[0].modId
+          if (typeof mods[0]?.modId === "string" && mods[0].modId.length) result.modId = mods[0].modId
           if (!result.minecraftVersion) {
-            const raw = data.minecraft_version ?? data.minecraft ?? ""
+            const dependencies = Object.values(data.dependencies ?? {}).flat() as Array<{ modId?: string; versionRange?: string }>
+            const raw = dependencies.find(item => item?.modId === "minecraft")?.versionRange ?? data.minecraft_version ?? data.minecraft ?? ""
             const version = findMcVersionInText(String(raw))
             if (version) result.minecraftVersion = version
           }
@@ -219,25 +221,6 @@ export function analyzeServerJar(jarPath: string): JarAnalysisResult {
     } else if (names.some((p: string) => p.startsWith("net/fabricmc/"))) {
       result.loaderId = "fabric"
       result.loaderLabel = "Fabric"
-    }
-  }
-
-  // ---------- 7. Fallback: полный скан текстовых метаданных ----------
-  if (!result.minecraftVersion) {
-    const metaExt = [".json", ".toml", ".properties", ".mf", ".txt", ".cfg"]
-    const found: string[] = []
-    for (const name of names) {
-      const lower = name.toLowerCase()
-      if (!metaExt.some(ext => lower.endsWith(ext))) continue
-      const text = readText(name)
-      if (!text) continue
-      const matches = text.match(new RegExp(MC_VERSION_PATTERN.source, "gi")) || []
-      for (const v of matches) {
-        if (!found.includes(v)) found.push(v)
-      }
-    }
-    if (found.length > 0) {
-      result.minecraftVersion = found[0]
     }
   }
 

@@ -63,6 +63,8 @@ export interface ThemeAppearance {
   lightPalette?: Partial<Record<ThemeColorKey, string>>
   darkPalette?: Partial<Record<ThemeColorKey, string>>
   titlebar?: string
+  lightTitlebar?: string
+  darkTitlebar?: string
   error?: string
   warning?: string
   info?: string
@@ -134,4 +136,30 @@ export interface LocalThemeSnapshot {
 }
 
 export type LocalThemeImport = { kind: "bundle"; theme: Theme }
+
+/**
+ * Ссылка на тему в модели LiveOps.
+ *
+ * `event` — тема ивента (`event_id` сервера), остальные два вида — обычный
+ * выбор лаунчера. Явный дискриминатор нужен контроллеру: id пресета и события
+ * не должны угадываться по строке.
+ */
+export interface LiveopsThemeRef {
+  kind: "preset" | "custom" | "event"
+  id: string
+}
+
+/**
+ * Состояние интеграции событийных тем.
+ *
+ * `enabled` — задан непустой origin LiveOps (default или `XNLC_LIVEOPS_URL`); иначе лаунчер работает
+ * с пресетами и своими темами, а сетевая часть не запускается.
+ */
+export interface LiveopsStatus {
+  enabled: boolean
+  /** Текущий выбор контроллера в id лаунчера: пресет, `custom-*` или `event:*`. */
+  selected?: string
+  /** Последняя ошибка загрузки/проверки ивента; выбранная тема остаётся рабочей. */
+  error?: string
+}
 

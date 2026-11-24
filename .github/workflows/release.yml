@@ -1,128 +1,349 @@
 name: Release
 
+# Стабильный релиз: обычный тег vX.Y.Z. Публикует только stable-артефакты.
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*', '!v*-pre*', '!v*-beta*']
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  HUTCH_NO_UPDATE_CHECK: '1'
+  BUN_OPTIONS: --no-env-file
+  XNLC_SKIP_LOCAL_DOTENV: '1'
+  XNLC_PARSER_LIVE_TESTS: '0'
+  CHANNEL: stable
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
+  tests:
+    # Тег vX.Y.Z-preN обслуживает pre-release.yml; здесь такой прогон пропускается.
+    if: ${{ !contains(github.ref_name, '-pre') && !contains(github.ref_name, '-beta') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - &checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          desktop: 'true'
+      - name: Check release channel
+        run: bun scripts/ci-release.ts channel
+      - name: Check version tag and main ancestry before the protected release
+        if: github.repository == 'MAINER4IK/Xneon-Launcher-bun' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun scripts/ci-release.ts guard-tag
+      - run: bun scripts/gen-agent-ipc-catalog.mjs --check
+      - run: bun run prepare:desktop
+      - run: bun scripts/check-config.mjs
+      - run: bun scripts/check-import-cycles.mjs
+      - run: bun run typecheck
+      - name: Validate GitHub Actions syntax, expressions and dependencies
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          curl --fail --silent --show-error --location https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o "$archive"
+          echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  '"$archive" | sha256sum --check -
+          mkdir "$RUNNER_TEMP/actionlint"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/actionlint" actionlint
+          "$RUNNER_TEMP/actionlint/actionlint" -shellcheck= -pyflakes= .github/workflows/*.yml
+      - name: Transpile main modules for desktop tests
+        run: bun scripts/build-electrobun-tests.mjs
+      - name: Offline tests (workspaces already prepared)
+        run: bun run test:offline:prepared
+      - name: Production renderer and worker bundles
+        run: |
+          bun run build:renderer
+          bun run build:workers
+
+  # Windows: NSIS собирается здесь же из единственного stable payload, без повторного SDK build.
   build:
+    needs: tests
+    if: >-
+      ${{ github.repository == 'MAINER4IK/Xneon-Launcher-bun' &&
+          (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') }}
+    name: Windows build (${{ matrix.target }})
     strategy:
       fail-fast: false
+      max-parallel: 3
       matrix:
         include:
-          - os: ubuntu-latest
-            target: linux
-            artifact_name: Xneon-Launcher-Linux
-            build_cmd: pnpm exec electron-builder --linux AppImage deb rpm tar.xz pacman --publish never
-          - os: windows-latest
-            target: windows
-            artifact_name: Xneon-Launcher-Windows
-            build_cmd: pnpm exec electron-builder --win nsis zip --publish never
-          - os: macos-latest
-            target: mac
-            artifact_name: Xneon-Launcher-Mac
-            build_cmd: pnpm exec electron-builder --mac dmg zip --publish never
-    runs-on: ${{ matrix.os }}
-
+          - { runner: windows-2022, target: win-x64, platform: win, arch: x64, machine: X64 }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-node@v5
+      - *checkout
+      - uses: ./.github/actions/setup
         with:
-          node-version: 22
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11
-
-      - name: Install system deps (Linux)
-        if: matrix.target == 'linux'
+          desktop: 'true'
+      - name: Check release tag and package version before building
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: bun scripts/ci-release.ts identity
+      - name: Check native target
+        shell: bash
+        env:
+          EXPECTED_MACHINE: ${{ matrix.machine }}
+          RUNNER_MACHINE: ${{ runner.arch }}
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libarchive-tools rpm2cpio cpio
-
-      - name: Configure git.xneon.org npm registry auth
-        env:
-          FORGEJO_NPM_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          set -euo pipefail
+          test "$RUNNER_MACHINE" = "$EXPECTED_MACHINE"
+      - name: Ensure NSIS
+        shell: pwsh
         run: |
-          printf "%s\n" "//git.xneon.org/api/packages/MAINER4IK/npm/:_authToken=${FORGEJO_NPM_TOKEN}" >> .npmrc
-          printf "%s\n" "always-auth=true" >> .npmrc
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      # Пакеты @xnlc/* подключены как workspace:* (симлинки на packages/*), а их
-      # собранный lib/ в репозиторий не попадает. Без этой сборки tsc не находит
-      # @xnlc/types и весь шаг Build app падает.
-      - name: Build local @xnlc packages
-        run: pnpm -r --filter "./packages/*" run build
-
-      - name: Build app
-        env:
-          GOOGLE_DRIVE_CLIENT_ID: ${{ secrets.GOOGLE_DRIVE_CLIENT_ID }}
-          GOOGLE_DRIVE_CLIENT_SECRET: ${{ secrets.GOOGLE_DRIVE_CLIENT_SECRET }}
-          DROPBOX_CLIENT_ID: ${{ secrets.DROPBOX_CLIENT_ID }}
-          YANDEX_CLIENT_ID: ${{ secrets.YANDEX_CLIENT_ID }}
-          ONEDRIVE_CLIENT_ID: ${{ secrets.ONEDRIVE_CLIENT_ID }}
-          ELY_CLIENT_ID: ${{ secrets.ELY_CLIENT_ID }}
-          ELY_CLIENT_SECRET: ${{ secrets.ELY_CLIENT_SECRET }}
-          ELY_DEVICE_CLIENT_ID: ${{ secrets.ELY_DEVICE_CLIENT_ID }}
-          XN_CLIENT_ID: ${{ secrets.XN_CLIENT_ID }}
-          XN_CLIENT_SECRET: ${{ secrets.XN_CLIENT_SECRET }}
-          MICROSOFT_CLIENT_ID: ${{ secrets.MICROSOFT_CLIENT_ID }}
-          MICROSOFT_DEVICE_CLIENT_ID: ${{ secrets.MICROSOFT_DEVICE_CLIENT_ID }}
-        run: pnpm run build
-
-      - name: Package
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false
-        run: ${{ matrix.build_cmd }}
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v5
+          $candidates = @(@(
+            (Join-Path $env:ProgramFiles 'NSIS\makensis.exe'),
+            (Join-Path ${env:ProgramFiles(x86)} 'NSIS\makensis.exe')
+          ) | Where-Object { Test-Path -LiteralPath $_ })
+          if (-not $candidates) {
+            choco install nsis --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $candidates = @(@((Join-Path ${env:ProgramFiles(x86)} 'NSIS\makensis.exe')) | Where-Object { Test-Path -LiteralPath $_ })
+          }
+          if (-not $candidates) { throw 'makensis (NSIS 3) is required to build the Windows installer' }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value ('XNEON_MAKENSIS=' + $candidates[0])
+          & $candidates[0] /VERSION
+      - name: Build stable Windows artifacts (NSIS)
+        run: bun run build
+      - name: Verify Windows platform adapters and PE metadata
+        run: |
+          set -euo pipefail
+          bun test tests/electrobun/platform-desktop.test.ts tests/electrobun/platform-secrets.test.ts tests/electrobun/platform-unix.test.ts
+          bun test tests/tooling/release-artifacts.test.mjs --test-name-pattern 'PE metadata'
+      - name: Validate Windows payload, PE, NSIS and staging
+        run: bun scripts/validate-pre-release.ts release-electrobun/stable checked-native stable
+      - name: Build and validate independent Portable profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          XNEON_BUILD_PORTABLE=1 bun scripts/electrobun.mjs build --env=dev
+          bun scripts/package-windows-portable.ts checked-portable
+      - uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.artifact_name }}
-          path: release/*
+          name: native-${{ matrix.target }}-stable
+          path: checked-native/*
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-win-x64-portable
+          path: |
+            checked-portable/*-portable.zip
+            checked-portable/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  build-linux:
+    needs: tests
+    if: >-
+      ${{ github.repository == 'MAINER4IK/Xneon-Launcher-bun' &&
+          (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') }}
+    name: Linux build (x64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TARGET_PLATFORM: linux
+      TARGET_ARCH: x64
+      EXPECTED_MACHINE: x86_64
+    steps:
+      - *checkout
+      - uses: ./.github/actions/setup
+        with:
+          desktop: 'true'
+          linux-native-build: 'true'
+      - name: Check release tag and package version before building
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: bun scripts/ci-release.ts identity
+      - name: Assert native runner architecture
+        run: test "$(uname -m)" = "$EXPECTED_MACHINE"
+      - name: Build stable Linux candidate
+        run: bun run build
+      - name: Run headless Linux updater integration and filesystem tests
+        run: bun test tests/electrobun/unix-update-*.test.ts tests/electrobun/update-*.test.ts tests/tooling/unix-package-build.test.ts tests/tooling/release-artifacts.test.mjs
+      - name: Validate native artifacts and exact archive identity
+        run: bun scripts/electrobun-artifacts.ts stage "release-electrobun/$CHANNEL" checked-unix "$TARGET_PLATFORM" "$TARGET_ARCH" "$CHANNEL"
+      - name: Validate Linux CEF runtime and ABI
+        run: |
+          set -euo pipefail
+          bun scripts/extract-native-payload.ts checked-unix native-payload "$CHANNEL" "$TARGET_PLATFORM" "$TARGET_ARCH"
+          payload="native-payload/XneonLauncher"
+          if [ "$CHANNEL" = canary ]; then payload="native-payload/XneonLauncher-canary"; fi
+          bun scripts/unix-native-preflight.ts "$payload" checked-unix-extra "$CHANNEL"
+      - name: Build Linux distribution packages
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends rpm libarchive-tools xz-utils squashfs-tools file
+          bun scripts/package-linux.ts checked-unix checked-unix-packages
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-linux-x64-${{ env.CHANNEL }}
+          path: checked-unix/*
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-linux-x64-packages
+          path: checked-unix-packages/*
+          if-no-files-found: error
+          retention-days: 7
+      - name: Preserve Linux validation evidence (not release assets)
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: evidence-linux-x64-${{ env.CHANNEL }}
+          path: checked-unix-extra/*
+          if-no-files-found: warn
+          retention-days: 7
+
+  build-macos:
+    needs: tests
+    if: >-
+      ${{ github.repository == 'MAINER4IK/Xneon-Launcher-bun' &&
+          (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') }}
+    name: macOS build (ARM64)
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      TARGET_PLATFORM: macos
+      TARGET_ARCH: arm64
+      EXPECTED_MACHINE: arm64
+    steps:
+      - *checkout
+      - uses: ./.github/actions/setup
+        with:
+          desktop: 'true'
+      - name: Check release tag and package version before building
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: bun scripts/ci-release.ts identity
+      - name: Assert native runner architecture
+        run: test "$(uname -m)" = "$EXPECTED_MACHINE"
+      - name: Build stable macOS candidate
+        run: bun run build
+      - name: Run native macOS updater unit and filesystem tests (not update E2E)
+        run: bun test tests/electrobun/unix-update-*.test.ts tests/electrobun/update-*.test.ts tests/tooling/unix-package-build.test.ts tests/tooling/release-artifacts.test.mjs
+      - name: Validate macOS artifacts and exact archive identity
+        run: bun scripts/electrobun-artifacts.ts stage "release-electrobun/$CHANNEL" checked-unix "$TARGET_PLATFORM" "$TARGET_ARCH" "$CHANNEL"
+      - name: Validate macOS payload and prepare DMG and ZIP
+        run: |
+          set -euo pipefail
+          bun scripts/extract-native-payload.ts checked-unix native-payload "$CHANNEL" "$TARGET_PLATFORM" "$TARGET_ARCH"
+          payload="native-payload/Xneon Launcher.app"
+          if [ "$CHANNEL" = canary ]; then payload="native-payload/Xneon Launcher-canary.app"; fi
+          bun scripts/unix-native-preflight.ts "$payload" checked-unix-extra "$CHANNEL"
+      - name: Verify native macOS image and application bundle
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          images=(release-electrobun/"$CHANNEL"/*.dmg)
+          apps=(build-electrobun/"$CHANNEL"-macos-arm64/*.app)
+          test "${#images[@]}" -eq 1
+          test "${#apps[@]}" -eq 1
+          plist="${apps[0]}/Contents/Info.plist"
+          executable="$(/usr/libexec/PlistBuddy -c 'Print CFBundleExecutable' "$plist")"
+          [[ "$executable" != */* ]]
+          test -x "${apps[0]}/Contents/MacOS/$executable"
+          test "$(lipo -archs "${apps[0]}/Contents/MacOS/$executable")" = "$EXPECTED_MACHINE"
+          BUNDLE_METADATA_FILE="${apps[0]}/Contents/Resources/metadata.json" UPDATE_MANIFEST_FILE="release-electrobun/$CHANNEL/${CHANNEL}-macos-arm64-update-v2.json" bun -e 'const [metadata, manifest] = await Promise.all(["BUNDLE_METADATA_FILE", "UPDATE_MANIFEST_FILE"].map(key => Bun.file(process.env[key]).json())); if (manifest.version !== (await import("./package.json")).default.version) throw new Error("Unexpected macOS bundle version"); for (const key of ["identifier", "channel", "hash"]) if (!metadata[key] || metadata[key] !== manifest[key]) throw new Error("Unexpected macOS wrapper " + key)'
+          hdiutil verify "${images[0]}"
+          mount_dir="$(mktemp -d)"
+          trap 'hdiutil detach "$mount_dir"; rmdir "$mount_dir"' EXIT
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount_dir" "${images[0]}"
+          mounted=("$mount_dir"/*.app)
+          test "${#mounted[@]}" -eq 1
+          diff -qr "${apps[0]}" "${mounted[0]}"
+      - name: Run macOS DMG and ZIP smoke
+        run: bun scripts/smoke-macos.ts checked-unix-extra unix-smoke
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-macos-arm64-${{ env.CHANNEL }}
+          path: checked-unix/*
+          if-no-files-found: error
+          retention-days: 7
+      - name: Preserve macOS validation evidence (not release assets)
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: evidence-macos-arm64-${{ env.CHANNEL }}
+          path: |
+            checked-unix-extra/*
+            unix-smoke/*
+          if-no-files-found: warn
+          retention-days: 7
 
   release:
-    needs: build
-    runs-on: ubuntu-latest
-
+    needs: [tests, build, build-linux, build-macos]
+    if: github.repository == 'MAINER4IK/Xneon-Launcher-bun' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: pre2-signing
+    permissions:
+      contents: write
+    concurrency:
+      group: publish-${{ github.ref }}
+      cancel-in-progress: false
     steps:
-      # git cliff строит ченджлог по истории и тегам: без fetch-depth: 0 он не увидит
-      # предыдущий релиз и выдаст пустой результат.
       - uses: actions/checkout@v5
         with:
+          persist-credentials: false
           fetch-depth: 0
-
-      - uses: actions/download-artifact@v5
+      - uses: ./.github/actions/setup
+      - name: Determine stable release identity
+        id: release
+        run: bun scripts/ci-release.ts identity
+      - uses: actions/download-artifact@v8
         with:
-          path: artifacts
-          merge-multiple: true
-
-      # Ченджлог через git cliff: только коммиты от предыдущего тега до текущего,
-      # без заголовка/подвала — он идёт телом релиза ниже.
-      - name: Generate changelog (git cliff)
-        id: git-cliff
-        uses: orhun/git-cliff-action@v4
-        with:
-          config: cliff.toml
-          args: --latest --strip all
+          pattern: native-*
+          path: release-candidates
+      - name: Validate downloaded native artifacts and SHA256 before signing
+        run: bun scripts/ci-release.ts check release-candidates
+      - name: Sign each published target's exact stable manifest
         env:
-          OUTPUT: CHANGELOG.md
-          GITHUB_REPO: ${{ github.repository }}
-
-      - name: Create GitHub Release
+          XNLC_UPDATE_PRIVATE_KEY: ${{ secrets.XNLC_UPDATE_PRIVATE_KEY }}
+          XNLC_UPDATE_KEY_ID: ${{ vars.XNLC_UPDATE_KEY_ID }}
+        run: |
+          set -euo pipefail
+          bun scripts/sign-update-feed.ts stable release-candidates/native-win-x64-stable signed-win win x64
+          bun scripts/sign-update-feed.ts stable release-candidates/native-linux-x64-stable signed-linux linux x64 release-candidates/native-linux-x64-packages
+          bun scripts/sign-update-feed.ts stable release-candidates/native-macos-arm64-stable signed-macos macos arm64
+          mkdir release-candidates/update-verified
+          # Подписанные каталоги не пересекаются по именам: каждый target даёт свои
+          # манифесты, архив и (для Linux) системные пакеты.
+          cp signed-win/* signed-linux/* signed-macos/* release-candidates/update-verified/
+          version="$(bun -p 'require("./package.json").version')"
+          cp "release-candidates/native-win-x64-stable/xneon-launcher-$version-win-x64.exe" release-candidates/update-verified/
+      - name: Verify trusted Ed25519 signatures and exact publication bytes
+        run: |
+          set -euo pipefail
+          bun scripts/verify-signed-update-feed.ts release-candidates/update-verified
+          (cd release-candidates/update-verified && sha256sum --check SHA256SUMS.txt)
+      - name: Prepare exact signed release allowlist, without rebuilding
+        run: bun scripts/ci-release.ts assemble release-candidates verified
+      - name: Generate changelog
+        run: bun scripts/release-notes.ts "$RUNNER_TEMP/release-notes.md"
+      - name: Recheck repository and tag immediately before publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun scripts/ci-release.ts guard-tag
+      - name: Publish only verified native artifacts
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          body: ${{ steps.git-cliff.outputs.content }}
-          files: artifacts/*
+          # guard-tag проверил существующий тег; target_commitish не нужен и требует лишних прав при дрейфе workflow.
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: ${{ steps.release.outputs.version }}
+          prerelease: false
+          make_latest: true
           fail_on_unmatched_files: true
+          body_path: ${{ runner.temp }}/release-notes.md
+          files: verified/*

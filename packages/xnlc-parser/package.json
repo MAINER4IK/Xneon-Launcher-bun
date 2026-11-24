@@ -1,0 +1,19 @@
+{
+  "name": "@xnlc/parser",
+  "version": "1.0.0",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "bun": ">=1.4.4" },
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "files": ["lib", "README.md", "INTEGRATION_GUIDE.md", "LIMITATIONS.md", "CHANGELOG.md", "SECURITY.md", "SUPPORTED_FORMATS.md", "LICENSE", "LICENSES.md"],
+  "exports": { ".": { "types": "./lib/index.d.ts", "default": "./lib/index.js" } },
+  "scripts": {
+    "build": "bun --bun run tsc -p tsconfig.json",
+    "test": "bun ../../scripts/test-parser.mjs offline",
+    "test:integration": "bun ../../scripts/test-parser.mjs integration",
+    "test:live": "bun ../../scripts/test-parser.mjs live"
+  },
+  "dependencies": { "@xnlc/archives": "workspace:*" },
+  "devDependencies": { "@types/bun": "^1.4.4", "typescript": "7.0.2" }
+}

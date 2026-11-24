@@ -2,10 +2,13 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import packageJson from './package.json' with { type: 'json' }
+import { DEV_RENDERER_HOST, DEV_RENDERER_PORT } from './electrobun/platform/dev-renderer-address.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
+  define: { XNLC_APPLICATION_USER_AGENT: JSON.stringify(`Xneon-Launcher/${packageJson.version}`) },
   plugins: [
     {
       name: 'tabler-direct-imports',
@@ -42,25 +45,30 @@ export default defineConfig({
     ],
   },
   resolve: {
+    dedupe: ['react', 'react-dom', 'i18next', 'react-i18next'],
     alias: {
+      'electrobun/view': path.resolve(__dirname, '.hutch/devkit/api/browser/index.ts'),
       '@': path.resolve(__dirname, '.'),
     },
   },
   server: {
-    port: 5173,
+    host: DEV_RENDERER_HOST,
+    port: DEV_RENDERER_PORT,
     strictPort: true,
     watch: {
       ignored: [
-        // Chokidar не читает .gitignore: локальный store содержит десятки тысяч
-        // файлов и установка наблюдателей блокировала dev-сервер на 40–50 секунд.
-        '**/.pnpm-store/**',
-        '**/.electron-mcp/**',
+        '**/.hutch/**',
+        '**/.local-research/**',
+        '**/build-electrobun/**',
+        '**/release-electrobun/**',
+        '**/dist-workers/**',
+        '**/packages/**/lib-cjs/**',
         '**/.dsh-*/**',
         '**/logs/**',
         '**/screenshots/**',
         '**/tsconfig.tsbuildinfo',
         '**/release/**',
-        '**/dist-electron/**',
+        '**/dist-electrobun/**',
         '**/dist/**',
         '**/xnlc-package/lib/**',
         '**/xnlc-package/installer.log',
@@ -72,9 +80,11 @@ export default defineConfig({
         '**/.tmp*/**',
       ],
       usePolling: false,
+      awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 20 },
     },
   },
   build: {
+    manifest: true,
     outDir: 'dist',
     emptyOutDir: true,
     chunkSizeWarningLimit: 2000,
@@ -92,30 +102,19 @@ export default defineConfig({
         manualChunks(id) {
           if (!id.includes('node_modules')) return
 
-          // Extract the real package name. pnpm store paths look like
-          // `node_modules/.pnpm/@tabler+icons-react@3.45.0/node_modules/@tabler/icons-react/...`,
-          // so we must take the segments AFTER the last `node_modules` occurrence.
           const segments = id.split(/[\\/]/)
           const idx = segments.lastIndexOf('node_modules')
-          if (idx < 0 || idx + 1 >= segments.length) return 'vendor'
+          if (idx < 0 || idx + 1 >= segments.length) return
           let pkg = segments[idx + 1]
           if (pkg.startsWith('@') && idx + 2 < segments.length) {
             pkg = `${pkg}/${segments[idx + 2]}`
           }
 
           if (pkg === 'react' || pkg === 'react-dom' || pkg === 'scheduler') return 'react'
-          if (pkg.startsWith('@radix-ui/')) return 'radix'
-          if (pkg === 'i18next' || pkg === 'react-i18next' || pkg === 'i18next-http-backend' || pkg === 'i18next-resources-to-backend') return 'i18n'
-          if (pkg === 'recharts' || pkg.startsWith('d3-') || pkg === 'victory-vendor') return 'charts'
           if (pkg === 'skinview3d' || pkg === 'three') return 'skinview'
-          if (pkg === 'date-fns') return 'datefns'
           if (pkg.startsWith('@tabler/')) return 'icons'
-          if (pkg === 'react-markdown' || pkg === 'rehype-raw' || pkg === 'rehype-sanitize' || pkg === 'remark-rehype' || pkg === 'unified') return 'markdown'
-          if (pkg === 'axios' || pkg === 'form-data' || pkg === 'follow-redirects') return 'http'
-          if (pkg === 'webdav') return 'webdav'
-          if (pkg === 'electron-updater' || pkg === 'builder-util-runtime') return 'updater'
-          if (pkg === 'adm-zip') return 'adm-zip'
-          return 'vendor'
+          // Остальное делит граф импортов: общий vendor втягивал Markdown/parse5
+          // в entry и принудительно загружал их до первого рендера.
         },
       },
     },

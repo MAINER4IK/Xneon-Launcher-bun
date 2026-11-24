@@ -142,7 +142,7 @@ let cachedLauncherNews: NewsEntry[] | null = readLauncherNewsCache()
 let cachedMojangNewsPromise: Promise<NewsEntry[]> | null = null
 
 function fetchMojangNewsDirect(): Promise<NewsEntry[]> {
-  cachedMojangNewsPromise = window.electronAPI?.fetchMinecraftNews().then((entries) => {
+  cachedMojangNewsPromise = window.electrobunAPI?.fetchMinecraftNews().then((entries) => {
     cachedMojangNews = entries
     writeNewsCache(entries)
     return entries
@@ -155,8 +155,8 @@ async function fetchLauncherNewsDirect(): Promise<NewsEntry[]> {
     // Адрес ленты живёт в main-процессе (XNLC_NEWS_URL, по умолчанию сайт
     // лаунчера), а разбор ответа — в одном месте (parseLauncherNewsItems).
     // Здесь только помечаем записи лаунчера: от этого зависит рубрика карточки.
-    if (!window.electronAPI?.fetchLauncherNews) return cachedLauncherNews ?? []
-    const res = await window.electronAPI.fetchLauncherNews()
+    if (!window.electrobunAPI?.fetchLauncherNews) return cachedLauncherNews ?? []
+    const res = await window.electrobunAPI.fetchLauncherNews()
     const entries: NewsEntry[] = (Array.isArray(res) ? res : []).map((entry) => {
       const typed = entry as NewsEntry
       return {
@@ -288,7 +288,12 @@ export const NewsSection = memo(function NewsSection() {
         ) : <VirtualNewsGrid entries={filtered} onRead={handleRead} />}
       </div>
 
-      {readerEntry && <Suspense fallback={null}><NewsReaderModal entry={readerEntry} onClose={handleReaderClose} /></Suspense>}
+      {/* Читалка грузится лениво: показывается только после клика по карточке. */}
+      {readerEntry && (
+        <Suspense fallback={null}>
+          <NewsReaderModal entry={readerEntry} onClose={handleReaderClose} />
+        </Suspense>
+      )}
     </div>
   )
 })

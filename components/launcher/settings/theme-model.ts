@@ -1,3 +1,4 @@
+import { launcherAssetUrl } from "@/lib/launcher-assets"
 import type { Theme, ThemeBackground, ThemeColorKey, ThemeFont, ThemeGlow } from "./types"
 
 /**
@@ -149,9 +150,22 @@ export function resolveTheme(theme: Theme): Theme {
   return { ...theme, palette, primary: palette.primary, accent: palette.accent }
 }
 
+/** Старый общий цвет панели не должен оставлять тёмную полосу в светлом режиме. */
+export function themeTitlebarColor(theme: Theme): string | undefined {
+  const mode = themeMode(theme)
+  const appearance = theme.appearance
+  const saved = appearanceColor(mode === "light" ? appearance?.lightTitlebar : appearance?.darkTitlebar)
+  if (saved) return saved
+  const legacy = appearanceColor(appearance?.titlebar)
+  if (!legacy) return undefined
+  if (!appearance?.colorMode) return legacy
+  const legacyMode = hexLuminance(legacy) > 0.35 ? "light" : "dark"
+  return legacyMode === mode ? legacy : undefined
+}
+
 /**
- * Тёмная база лаунчера (`.dark` из `src/index.css`) в hex — с неё начинается
- * любая новая кастомная тема, поэтому «Создать тему» не меняет вид окна.
+ * Резервная тёмная палитра для недостающих цветов и создания темы без образца.
+ * Если передана базовая тема, новая тема получает палитру из неё.
  */
 export const DARK_PALETTE: Record<ThemeColorKey, string> = {
   background: "#010203",
@@ -338,6 +352,7 @@ function resetThemeVars(root: HTMLElement) {
   root.style.removeProperty("--theme-bg-blur")
   for (const name of THEME_ENTER_CSS_VARS) root.style.removeProperty(name)
   root.style.fontSize = ""
+  root.style.removeProperty("--theme-font-size")
   root.style.removeProperty("color-scheme")
   root.classList.remove("theme-with-background")
   document.getElementById(THEME_CSS_STYLE_ID)?.remove()
@@ -361,7 +376,7 @@ function applyAmbientVars(root: HTMLElement, primary: string, accent: string) {
   if (accentHex) root.style.setProperty("--ambient-accent", accentHex)
 }
 
-/** Шрифт темы: гарнитура и базовый кегль (Tailwind считает в rem, поэтому масштабируется всё). */
+/** Размер текста отделён от rem, используемых для геометрии интерфейса. */
 function fontFamilyCss(font: Theme["font"]): string | undefined {
   if (!font) return undefined
   const family = typeof font.family === "string" && font.family.trim() ? font.family.trim() : font.source ? "XneonThemeFont" : ""
@@ -377,7 +392,7 @@ function applyFontVars(root: HTMLElement, font: Theme["font"]) {
   const family = fontFamilyCss(font)
   if (family) root.style.setProperty("--font-sans", family)
   if (typeof font.size === "number") {
-    root.style.fontSize = `${clampRange(font.size, FONT_SIZE_MIN, FONT_SIZE_MAX, FONT_SIZE_DEFAULT)}px`
+    root.style.setProperty("--theme-font-size", `${clampRange(font.size, FONT_SIZE_MIN, FONT_SIZE_MAX, FONT_SIZE_DEFAULT)}px`)
   }
 }
 
@@ -394,6 +409,7 @@ function applyBackgroundVars(root: HTMLElement, background: Theme["background"])
  * так пользователь может переопределить что угодно, и это снимается одной строкой.
  */
 function applyCustomCss(css: string | undefined) {
+  css = css?.replace(/xnl-theme:\/\/asset\/[a-f0-9]{64}\.[a-z0-9]+/gi, launcherAssetUrl)
   const content = typeof css === "string" ? css.trim() : ""
   if (!content) return
   // База темы идёт перед пользовательским CSS, чтобы обычный :root мог
@@ -401,7 +417,7 @@ function applyCustomCss(css: string | undefined) {
   const root = document.documentElement
   const names = [
     ...Object.values(THEME_CSS_VARS), "--sidebar-ring", "--glow-primary", "--glow-accent",
-    "--ambient-primary", "--ambient-accent", "--font-sans", "--theme-bg-opacity",
+    "--ambient-primary", "--ambient-accent", "--font-sans", "--theme-font-size", "--theme-bg-opacity",
     "--theme-bg-dim", "--theme-bg-blur", "color-scheme", "--theme-titlebar", "--destructive", "--destructive-foreground", "--warning", "--info", "--success",
     "--theme-blur-titlebar", "--theme-blur-sidebar", "--theme-blur-card", "--theme-radius", "--radius", ...THEME_ENTER_CSS_VARS, ...semanticCssVars, ...Object.keys(SURFACE_ALIASES),
   ]
@@ -423,16 +439,19 @@ function applyCustomCss(css: string | undefined) {
     style.id = THEME_CSS_STYLE_ID
     document.head.appendChild(style)
   }
-  style.textContent = content
+  // Старые экспортированные темы задавали кегль корня и масштабировали rem.
+  style.textContent = content.replace(/(:root\s*\{)([^}]*)(\})/g, (_match, start, body: string, end) =>
+    start + body.replace(/(^|;)\s*font-size\s*:\s*([\d.]+)px/gi, "$1 --theme-font-size: $2px") + end,
+  )
 }
 
 /** Кеш только цветов splash, без CSS, медиа и обращения к БД при следующем старте. */
 function persistStartupTheme(root: HTMLElement) {
-  if (typeof window === "undefined" || typeof getComputedStyle !== "function" || !window.electronAPI?.setSetting) return
+  if (typeof window === "undefined" || typeof getComputedStyle !== "function" || !window.electrobunAPI?.setSetting) return
   const styles = getComputedStyle(root)
   const colors = Object.fromEntries(["--background", "--foreground", "--primary", "--accent", "--border", "--muted-foreground", "--glow-primary", "--glow-accent"].map(key => [key, styles.getPropertyValue(key).trim()]))
   const snapshot = JSON.stringify({ mode: root.classList.contains("dark") ? "dark" : "light", colors })
-  void window.electronAPI.setSetting("_startupThemeSnapshot", snapshot).catch(() => {})
+  void window.electrobunAPI.setSetting("_startupThemeSnapshot", snapshot).catch(() => {})
 }
 
 /**
@@ -442,7 +461,7 @@ function persistStartupTheme(root: HTMLElement) {
  * (встроенный пресет) по-прежнему меняет только акценты, а фон остаётся общим.
  * Шрифт, фон и пользовательский CSS применяются в обеих ветках.
  */
-export function applyTheme(input: Theme) {
+export function applyTheme(input: Theme, options: { preview?: boolean } = {}) {
   const theme = resolveTheme(input)
   const root = document.documentElement
   // Общий редактор оформляет окно и статью; старые архивы сохраняют свои дополнительные правила.
@@ -467,7 +486,7 @@ export function applyTheme(input: Theme) {
     root.classList.toggle(`theme-blur-${part}`, (appearance?.[key] ?? 0) > 0)
   }
   const applied = () => {
-    persistStartupTheme(root)
+    if (!options.preview) persistStartupTheme(root)
     // Подписчики получают исходные независимые палитры и уже применённые стили.
     if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("theme:applied", { detail: input }))
   }
@@ -477,7 +496,7 @@ export function applyTheme(input: Theme) {
     for (const color of SEMANTIC_COLOR_TOKENS[key]) for (const shade of [300, 400, 500, 600, 700]) root.style.setProperty(`--color-${color}-${shade}`, value)
   }
   for (const [key, name] of Object.entries({ titlebar: "--theme-titlebar", error: "--destructive", warning: "--warning", info: "--info", success: "--success" })) {
-    const value = appearanceColor(appearance?.[key as "titlebar" | "error" | "warning" | "info" | "success"])
+    const value = key === "titlebar" ? themeTitlebarColor(theme) : appearanceColor(appearance?.[key as "error" | "warning" | "info" | "success"])
     if (value) root.style.setProperty(name, value)
     else if (key !== "titlebar") root.style.setProperty(name, SEMANTIC_DEFAULTS[key as keyof typeof SEMANTIC_DEFAULTS])
   }
@@ -716,7 +735,7 @@ export function sanitizeTheme(input: unknown): Theme | null {
       }
       appearance[mode] = palette
     }
-    for (const key of ["titlebar", "error", "warning", "info", "success"] as const) {
+    for (const key of ["titlebar", "lightTitlebar", "darkTitlebar", "error", "warning", "info", "success"] as const) {
       const color = appearanceColor(input[key])
       if (color) appearance[key] = color
     }

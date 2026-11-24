@@ -1,3 +1,5 @@
+declare const XNLC_APPLICATION_USER_AGENT: string | undefined
+const XNLC_USER_AGENT = typeof XNLC_APPLICATION_USER_AGENT === "string" ? XNLC_APPLICATION_USER_AGENT : "xnlc-mods"
 // ============================================================
 // XNLC Mods — FTB (Feed The Beast) API Client
 // Minecraft modpack directory: https://api.modpacks.ch
@@ -19,7 +21,9 @@ import type {
   FTBVersion,
 } from "./ftb-types.js";
 
-const FTB_BASE = "https://api.modpacks.ch";
+import { CONTENT_URLS } from "@xnlc/urls";
+
+const FTB_BASE = CONTENT_URLS.ftbApi;
 const MAX_RETRIES = 2;
 const MODS_PER_PAGE = 20;
 
@@ -108,7 +112,7 @@ async function ftbFetch(endpoint: string, options?: { timeoutMs?: number; retrie
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const res = await fetch(`${FTB_BASE}${endpoint}`, {
-        headers: { "User-Agent": "Xneon-Launcher/1.0 (launcher@xneon.fun)" },
+        headers: { "User-Agent": XNLC_USER_AGENT },
         signal: controller.signal,
       });
       if (!res.ok) throw new Error(`FTB API ${res.status}: ${res.statusText}`);

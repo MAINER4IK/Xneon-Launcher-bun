@@ -4,9 +4,11 @@
 // ============================================================
 
 // Domain types
-export type { AgentToolCall, AgentWireMessage, AgentToolSpec, AgentTurnRequest, AgentTurnResult, AgentAttachment, AgentTimelineItem, AgentChatSummary, AgentChat, AgentBuildFileRequest } from "./agent-types.js"
+export type { AgentToolCall, AgentWireMessage, AgentToolSpec, AgentTurnRequest, AgentTurnResult, AgentAttachment, AgentTimelineItem, AgentChatSummary, AgentChat, AgentBuildFileRequest, AgentMcpServerConfig, AgentMcpServerState, AgentMcpServerSummary, AgentMcpToolInfo, AgentWebSearchResult, AgentWebSearchResponse, AgentWebPageLink, AgentWebFetchResponse } from "./agent-types.js"
 export type {
   DbAccount,
+  PublicAccount,
+  CloudAccountPreview,
   DbBuild,
   DbBuildLight,
   DbBuildMod,
@@ -14,6 +16,8 @@ export type {
   DatapackInfo,
   ScreenshotInfo,
   AuthPayload,
+  MicrosoftAuthStage,
+  MicrosoftAuthProgress,
   ElyByPayload,
   XnSkinsPayload,
   MicrosoftPayload,
@@ -33,6 +37,8 @@ export type {
   CloudFile,
   CloudStorageInfo,
   BuildIntentScanResult,
+  BuildContentManifest,
+  BuildContentDelta,
   ModpackImportMod,
   ModpackImportResult,
   ModpackImportConflict,
@@ -123,13 +129,13 @@ export type {
 
 // IPC contracts
 export type {
+  ModpackContents,
+  ModdexReviews,
   IpcInvokeMap,
   IpcEventMap,
-  ElectronAPIExplicit,
-  ElectronAPIExtra,
-  ElectronAPI,
-  BuildLoaderRequirementIssue,
-  BuildLoaderRequirementReport,
+  ElectrobunAPIExplicit,
+  ElectrobunAPIExtra,
+  ElectrobunAPI,
 } from "./ipc-contracts.js"
 
 // Launch types
@@ -164,8 +170,11 @@ export type {
   ServerStatusResult,
 } from "./server-types.js"
 
-export type { AiProtocol, AiModelConfig, AiConfig, AiModelDiscovery } from "./agent-types.js"
+export type { AiProtocol, AiModelConfig, AiConfig, AiConfigStatus, AiConfigUpdate, AiModelDiscovery } from "./agent-types.js"
 export type { AgentHardware } from "./agent-types.js"
+export type { ShareRequest, ShareResponse, ShareResult, ShareLink, ShareContentPresentation, ShareProgress } from "./share-types.js"
+export type { ServerHostSettingsCommand, ServerHostSettings, ServerPermissions, ServerPermission, RemoteServerMember, RemoteServerAccess, RemoteServerRequest, RemoteServerResponse } from "./remote-server-types.js"
 
 export type { Theme, ThemeColorKey, ThemeGlow, ThemeFont, ThemeBackground, ThemeAppearance } from "./theme-types.js"
 export type { LocalThemeFile, LocalThemeSnapshot, LocalThemeImport } from "./theme-types.js"
+export type { LiveopsThemeRef, LiveopsStatus } from "./theme-types.js"

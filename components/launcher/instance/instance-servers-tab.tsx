@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils"
 import { parseMotd } from "@/lib/minecraft-motd"
 import { ModalLayer } from "@/components/ui/modal-layer"
 import { ModalTitleIcon } from "@/components/ui/modal-title-icon"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { IconChevronDown, IconChevronUp, IconCircleX, IconPlugConnected, IconPlus, IconPencil, IconRefresh, IconSearch, IconServer, IconStar, IconTrash, IconX, IconLoader2 } from "@tabler/icons-react"
 import { useAccounts } from "@/src/AccountsContext"
@@ -41,7 +42,7 @@ interface InstanceServersTabProps {
 }
 
 async function fetchServerStatus(ip: string): Promise<ServerStatus> {
-  const api = window.electronAPI
+  const api = window.electrobunAPI
   if (!api?.pingServer) throw new Error("Ping API unavailable")
   const result = await api.pingServer(ip)
   if (!result.online && result.error) throw new Error(result.error)
@@ -50,9 +51,10 @@ async function fetchServerStatus(ip: string): Promise<ServerStatus> {
 
 export function InstanceServersTab({ build, updateBuild }: InstanceServersTabProps) {
   const { t } = useTranslation()
-  const { activeAccount } = useAccounts()
+  const { activeAccount, accounts } = useAccounts()
   const [servers, setServers] = useState<ServerEntry[]>([])
   const [searchQuery, setSearchQuery] = useState("")
+  const [collapsed, setCollapsed] = useState({ online: false, offline: false })
   const [showAddModal, setShowAddModal] = useState(false)
   const [newName, setNewName] = useState("")
   const [newIp, setNewIp] = useState("")
@@ -79,7 +81,7 @@ export function InstanceServersTab({ build, updateBuild }: InstanceServersTabPro
       // Load favorites from localStorage
       let favoriteIps: Set<string> = new Set()
       try {
-        const raw = await window.electronAPI?.getSetting("servers_favorites")
+        const raw = await window.electrobunAPI?.getSetting("servers_favorites")
         if (raw) {
           const favs: string[] = JSON.parse(raw)
           favoriteIps = new Set(favs)
@@ -89,7 +91,7 @@ export function InstanceServersTab({ build, updateBuild }: InstanceServersTabPro
       // Load base server list from servers.dat
       let serverList: Array<{ name: string; ip: string; resourcePack?: "prompt" | "enabled" | "disabled" }> = []
       try {
-        const datServers = await window.electronAPI?.listServers(build.name)
+        const datServers = await window.electrobunAPI?.listServers(build.name)
         if (datServers && datServers.length > 0) {
           serverList = datServers
         }
@@ -119,8 +121,8 @@ export function InstanceServersTab({ build, updateBuild }: InstanceServersTabPro
     if (!initialized) return
 
     const favoriteIps = servers.filter((s) => s.isFavorite).map((s) => s.ip)
-    void window.electronAPI?.setSetting("servers_favorites", JSON.stringify(favoriteIps))
-    void window.electronAPI?.writeServersDat(build.name, servers.map((s) => ({ name: s.name, ip: s.ip, resourcePack: s.resourcePack })))
+    void window.electrobunAPI?.setSetting("servers_favorites", JSON.stringify(favoriteIps))
+    void window.electrobunAPI?.writeServersDat(build.name, servers.map((s) => ({ name: s.name, ip: s.ip, resourcePack: s.resourcePack })))
   }, [servers, initialized, build.name])
 
   const fetchAll = useCallback(async () => {
@@ -204,23 +206,24 @@ export function InstanceServersTab({ build, updateBuild }: InstanceServersTabPro
   const formatPlayers = (n: number) => n.toLocaleString("ru-RU")
 
   const connectToServer = async (server: ServerEntry) => {
+    const launchAccount = accounts.find(account => account.id === build.defaultAccountId) ?? activeAccount
     const status = server.status
-    if (!status?.online || !status.ip || !activeAccount) return
-    const api = window.electronAPI
+    if (!status?.online || !status.ip || !launchAccount) return
+    const api = window.electrobunAPI
     if (!api) return
     setConnectingIp(server.ip)
     try {
       const settings = await loadLaunchSettings()
-      const { width, height } = resolveLaunchDimensions(settings)
+      const { width, height } = build.windowOverride && build.windowWidth && build.windowHeight ? { width: build.windowWidth, height: build.windowHeight } : resolveLaunchDimensions(settings)
 
       const intentPath = build.name ? await api.getBuildIntentPath(build.name) : undefined
 
       await api.launchMinecraft({
         version: build.version,
-        modLoader: (build.customVersionPath ? "custom" : build.modLoader) as "vanilla" | "forge" | "fabric" | "quilt" | "liteloader" | "optifine" | "neoforge" | "custom",
+        modLoader: (build.customVersionPath ? "custom" : build.modLoader) as import("@xnlc/types").MinecraftLaunchParams["modLoader"],
         ...(build.loaderVersion ? { loaderVersion: build.loaderVersion } : {}),
         ...(build.customVersionPath ? { customVersionPath: build.customVersionPath } : {}),
-        account: { type: activeAccount.type, username: activeAccount.username, uuid: activeAccount.uuid, accessToken: activeAccount.accessToken },
+        account: { type: launchAccount.type, username: launchAccount.username, uuid: launchAccount.uuid },
         memory: { min: build.javaOverride && build.memoryMin ? build.memoryMin : (settings.savedMemoryMin || "512M"), max: build.javaOverride && build.memoryMax ? build.memoryMax : (settings.savedMemoryMax || "4G") },
         javaPath: build.javaOverride ? build.javaPath : undefined,
         javaArgs: build.javaOverride ? build.javaArgs : undefined,
@@ -336,15 +339,15 @@ export function InstanceServersTab({ build, updateBuild }: InstanceServersTabPro
           )}
         </div>
 
-        <div data-ui="instance-instance-servers-tab-div-8" className="flex items-center gap-2 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button type="button" onClick={() => openEditor(server)} title={t("servers.edit")} className="rounded-lg bg-muted/50 p-2 text-muted-foreground hover:text-foreground"><IconPencil className="h-4 w-4" /></button>
+        <div data-ui="instance-instance-servers-tab-div-8" className="flex items-center gap-2 flex-shrink-0">
+          <button type="button" onClick={() => openEditor(server)} title={t("servers.edit")} className="rounded-lg border border-border bg-muted/60 p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"><IconPencil className="h-4 w-4" /></button>
           <div data-ui="instance-instance-servers-tab-div-9" className="flex flex-col gap-0.5">
             <button data-ui="instance-instance-servers-tab-button-2"
               onClick={(e) => {
                 e.stopPropagation()
                 moveServer(server.ip, -1)
               }}
-              className="p-1 rounded-md bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              className="p-1 rounded-md border border-border bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
               title={t("servers.moveUp")}
             >
               <IconChevronUp className="w-4 h-4" />
@@ -354,7 +357,7 @@ export function InstanceServersTab({ build, updateBuild }: InstanceServersTabPro
                 e.stopPropagation()
                 moveServer(server.ip, 1)
               }}
-              className="p-1 rounded-md bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              className="p-1 rounded-md border border-border bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
               title={t("servers.moveDown")}
             >
               <IconChevronDown className="w-4 h-4" />
@@ -373,7 +376,7 @@ export function InstanceServersTab({ build, updateBuild }: InstanceServersTabPro
           )}
           <button data-ui="instance-instance-servers-tab-button-5"
             onClick={() => setServers((prev) => prev.filter((p) => p.ip !== server.ip))}
-            className="p-2 rounded-lg bg-muted/50 hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors"
+            className="p-2 rounded-lg border border-border bg-muted/60 hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors"
           >
             <IconTrash className="w-4 h-4" />
           </button>
@@ -384,16 +387,10 @@ export function InstanceServersTab({ build, updateBuild }: InstanceServersTabPro
 
   return (
     <div data-ui="instance-instance-servers-tab-div-10" data-component="instance-servers-tab" className={`flex-1 min-h-0 flex flex-col gap-3 overflow-hidden ${contentEnter ?? ""}`}>
-      {/* Заголовок вкладки — как в «Мирах» и остальном лаунчере: плоский
-          контейнер с линией-разделителем, без отдельной закруглённой карточки
-          вокруг всей вкладки и без размытых декоративных пятен. */}
-      <div data-ui="instance-instance-servers-tab-div-11" className="flex items-center justify-between border-b border-border pb-2.5 shrink-0 pr-1">
+      <div data-ui="instance-instance-servers-tab-div-11" className="flex items-center justify-between rounded-xl border border-border bg-card p-4 shrink-0">
         <div data-ui="instance-instance-servers-tab-div-12">
           <h2 data-ui="instance-instance-servers-tab-h2-1" className="text-xl font-semibold text-foreground">{t("servers.title")}</h2>
           <p data-ui="instance-instance-servers-tab-p-5" className="text-sm text-muted-foreground mt-1">{t("servers.tabSubtitle")}</p>
-          <p data-ui="instance-instance-servers-tab-p-6" className="text-xs text-muted-foreground/70 mt-0.5">
-            {servers.filter((s) => s.status?.online).length} / {servers.length} {t("servers.online")}
-          </p>
         </div>
         <div data-ui="instance-instance-servers-tab-div-13" className="flex items-center gap-1.5">
           <button data-ui="instance-instance-servers-tab-button-6"
@@ -431,7 +428,7 @@ export function InstanceServersTab({ build, updateBuild }: InstanceServersTabPro
             {filtered.length === 0 ? (
               // Пустое состояние в том же оформлении, что и вкладка «Миры»:
               // крупная иконка в цветной плашке, жирный заголовок и действие.
-              <div data-ui="instance-instance-servers-tab-div-17" className="flex h-full flex-col items-center justify-center gap-4 text-center max-w-md mx-auto py-12">
+              <div data-ui="instance-instance-servers-tab-div-17" className="flex h-full flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-4 py-12 text-center">
                 <div data-ui="instance-instance-servers-tab-div-18" className="flex h-20 w-20 items-center justify-center rounded-3xl bg-primary/10 text-primary border border-primary/20">
                   <IconServer className="h-10 w-10" strokeWidth={1.75} />
                 </div>
@@ -456,31 +453,34 @@ export function InstanceServersTab({ build, updateBuild }: InstanceServersTabPro
               <>
                 {favoriteServers.length > 0 && (
                   <div data-ui="instance-instance-servers-tab-div-22">
-                    <h3 data-ui="instance-instance-servers-tab-h3-1" className="text-sm font-medium text-warning flex items-center gap-2">
+                    <h3 data-ui="instance-instance-servers-tab-h3-1" className="text-sm font-medium text-warning flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2">
                       <IconStar className="w-4 h-4 fill-warning" />
                       {t("servers.favorites")} ({favoriteServers.length})
                     </h3>
                     <div data-ui="instance-instance-servers-tab-div-23" className="space-y-2 mt-2">{favoriteServers.map((server, index) => renderServer(server, index))}</div>
                   </div>
                 )}
-                {onlineServers.filter((s) => s.loading || s.error || s.status?.online).length > 0 && (
-                  <div data-ui="instance-instance-servers-tab-div-24">
-                    <h3 data-ui="instance-instance-servers-tab-h3-2" className="text-sm font-medium text-success flex items-center gap-2">
-                      <span data-ui="instance-instance-servers-tab-span-7" className="w-2 h-2 rounded-full bg-success" />
-                      {t("servers.online")} ({onlineServers.length})
-                    </h3>
-                    <div data-ui="instance-instance-servers-tab-div-25" className="space-y-2 mt-2">{onlineServers.map((server, index) => renderServer(server, index))}</div>
-                  </div>
-                )}
-                {offlineServers.length > 0 && (
-                  <div data-ui="instance-instance-servers-tab-div-26">
-                    <h3 data-ui="instance-instance-servers-tab-h3-3" className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                      <span data-ui="instance-instance-servers-tab-span-8" className="w-2 h-2 rounded-full bg-destructive" />
-                      {t("servers.offline")} ({offlineServers.length})
-                    </h3>
-                    <div data-ui="instance-instance-servers-tab-div-27" className="space-y-2 mt-2">{offlineServers.map((server, index) => renderServer(server, index))}</div>
-                  </div>
-                )}
+                {(["online", "offline"] as const).map(group => {
+                  const entries = group === "online" ? onlineServers : offlineServers
+                  if (entries.length === 0) return null
+                  return (
+                    <div key={group}>
+                      <h3>
+                        <button
+                          type="button"
+                          aria-expanded={!collapsed[group]}
+                          onClick={() => setCollapsed(current => ({ ...current, [group]: !current[group] }))}
+                          className={cn("flex w-full items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", group === "online" ? "text-success" : "text-muted-foreground")}
+                        >
+                          <span aria-hidden="true" className={cn("size-2 rounded-full", group === "online" ? "bg-success" : "bg-destructive")} />
+                          {t(group === "online" ? "servers.online" : "servers.offline")} ({entries.length})
+                          <IconChevronDown aria-hidden="true" size={16} className={cn("ml-auto text-muted-foreground motion-safe:transition-transform", collapsed[group] && "-rotate-90")} />
+                        </button>
+                      </h3>
+                      {!collapsed[group] && <div className="mt-2 space-y-2">{entries.map((server, index) => renderServer(server, index))}</div>}
+                    </div>
+                  )
+                })}
               </>
             )}
           </div>
@@ -495,7 +495,7 @@ export function InstanceServersTab({ build, updateBuild }: InstanceServersTabPro
           >
             <div data-ui="instance-instance-servers-tab-div-29" className="flex items-center justify-between">
               <h3 data-ui="instance-instance-servers-tab-h3-4" className="flex items-center gap-2 text-lg font-semibold text-foreground"><ModalTitleIcon><IconServer className="h-4 w-4" strokeWidth={1.75} /></ModalTitleIcon>{t(editingIp ? "servers.edit" : "servers.addServer")}</h3>
-              <button data-ui="instance-instance-servers-tab-button-9"
+              <button data-modal-close data-ui="instance-instance-servers-tab-button-9"
                 onClick={() => setShowAddModal(false)}
                 className="w-8 h-8 rounded-lg bg-muted/50 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
               >
@@ -533,7 +533,7 @@ export function InstanceServersTab({ build, updateBuild }: InstanceServersTabPro
                 <p className="text-xs text-muted-foreground">{t("servers.resourcePack.hint")}</p>
               </div>
               <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-border p-3 text-sm text-foreground">
-                <input type="checkbox" checked={favorite} onChange={event => setFavorite(event.target.checked)} className="h-4 w-4 accent-primary" />
+                <Checkbox checked={favorite} onCheckedChange={checked => setFavorite(checked === true)} />
                 <IconStar className="h-4 w-4 text-primary" />{t("servers.favorite")}
               </label>
               <div data-ui="instance-instance-servers-tab-div-33" className="flex gap-3">

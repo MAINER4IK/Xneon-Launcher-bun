@@ -3,7 +3,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
-const outDir = path.join(root, "electron", "main", "cloud")
+const outDir = path.join(root, "electrobun", "main", "cloud")
 const outFile = path.join(outDir, "credentials.generated.ts")
 
 function loadDotEnv() {
@@ -26,7 +26,7 @@ function loadDotEnv() {
   }
 }
 
-loadDotEnv()
+if (process.env.XNLC_SKIP_LOCAL_DOTENV !== "1") loadDotEnv()
 
 const read = (name) => process.env[name] || ""
 
