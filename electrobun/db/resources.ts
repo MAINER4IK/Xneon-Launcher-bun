@@ -1,0 +1,90 @@
+import { queryAll, run, isDbAvailable, transactionImmediate } from "./core"
+
+export type ResourceRow = {
+  sha1: string
+  name: string
+  version: string
+  description: string
+  icon: string
+  author: string
+  source: string
+  projectId: string | null
+  versionId: string | null
+  modId: number | null
+  fileId: number | null
+  cfChecked: number
+  parserVersion?: string
+  updatedAt: number
+}
+
+export async function getResources(sha1s: string[]): Promise<ResourceRow[]> {
+  if (!isDbAvailable() || sha1s.length === 0) return []
+  const placeholders = sha1s.map(() => "?").join(",")
+  return queryAll<ResourceRow>(`SELECT * FROM resources WHERE sha1 IN (${placeholders})`, sha1s)
+}
+
+/** Точное совпадение версии для просмотра исторического содержимого сборки. */
+export function getResourceForSource(source: { provider: string; projectId: string; versionId: string; fileId: string }): ResourceRow | undefined {
+  if (!isDbAvailable()) return undefined
+  if (source.provider === "modrinth") return queryAll<ResourceRow>("SELECT * FROM resources WHERE projectId=? AND versionId=? LIMIT 1", [source.projectId, source.versionId])[0]
+  if (source.provider === "curseforge") return queryAll<ResourceRow>("SELECT * FROM resources WHERE modId=? AND fileId=? LIMIT 1", [source.projectId, source.fileId])[0]
+  return undefined
+}
+
+export async function upsertResource(resource: Omit<ResourceRow, "updatedAt">): Promise<void> {
+  if (!isDbAvailable()) return
+  run(`
+    INSERT OR REPLACE INTO resources (sha1, name, version, description, icon, author, source, projectId, versionId, modId, fileId, cfChecked, parserVersion, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, (SELECT parserVersion FROM resources WHERE sha1 = ?), ''), ?)
+  `, [resource.sha1, resource.name, resource.version, resource.description, resource.icon, resource.author, resource.source, resource.projectId, resource.versionId, resource.modId, resource.fileId, resource.cfChecked ?? 0, resource.parserVersion ?? null, resource.sha1, Date.now()])
+}
+
+/**
+ * Батч-версия {@link upsertResource}: одна транзакция на весь набор вместо
+ * коммита (и fsync в WAL) на каждую запись. Скан контента пишет сотни ресурсов
+ * подряд — поштучные коммиты были основной причиной «fsync-шторма».
+ */
+export async function upsertResources(resources: Array<Omit<ResourceRow, "updatedAt">>): Promise<void> {
+  if (!isDbAvailable() || resources.length === 0) return
+  const updatedAt = Date.now()
+  transactionImmediate(() => {
+    for (const resource of resources) {
+      run(`
+        INSERT OR REPLACE INTO resources (sha1, name, version, description, icon, author, source, projectId, versionId, modId, fileId, cfChecked, parserVersion, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, (SELECT parserVersion FROM resources WHERE sha1 = ?), ''), ?)
+      `, [resource.sha1, resource.name, resource.version, resource.description, resource.icon, resource.author, resource.source, resource.projectId, resource.versionId, resource.modId, resource.fileId, resource.cfChecked ?? 0, resource.parserVersion ?? null, resource.sha1, updatedAt])
+    }
+  })
+}
+
+/** Обновляем только превью и только если фоновое обогащение ещё не сменило его. */
+export async function updateResourceIcons(icons: Array<{ sha1: string; previous: string; icon: string }>): Promise<void> {
+  if (!isDbAvailable() || icons.length === 0) return
+  transactionImmediate(() => {
+    for (const { sha1, previous, icon } of icons) {
+      run("UPDATE resources SET icon = ? WHERE sha1 = ? AND icon = ?", [icon, sha1, previous])
+    }
+  })
+}
+
+export async function setResourceCurseforge(sha1: string, modId: number, fileId: number): Promise<void> {
+  if (!isDbAvailable()) return
+  run("UPDATE resources SET modId = ?, fileId = ?, cfChecked = 1, updatedAt = ? WHERE sha1 = ?", [modId, fileId, Date.now(), sha1])
+}
+
+/** Батч-версия {@link setResourceCurseforge}: один проход в транзакции. */
+export async function setResourcesCurseforge(matches: Array<{ sha1: string; modId: number; fileId: number }>): Promise<void> {
+  if (!isDbAvailable() || matches.length === 0) return
+  const updatedAt = Date.now()
+  transactionImmediate(() => {
+    for (const { sha1, modId, fileId } of matches) {
+      run("UPDATE resources SET modId = ?, fileId = ?, cfChecked = 1, updatedAt = ? WHERE sha1 = ?", [modId, fileId, updatedAt, sha1])
+    }
+  })
+}
+
+export async function markResourcesCurseforgeChecked(sha1s: string[]): Promise<void> {
+  if (!isDbAvailable() || sha1s.length === 0) return
+  const placeholders = sha1s.map(() => "?").join(",")
+  run(`UPDATE resources SET cfChecked = 1, updatedAt = ? WHERE modId IS NULL AND sha1 IN (${placeholders})`, [Date.now(), ...sha1s])
+}

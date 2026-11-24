@@ -1,3 +1,4 @@
+import { IconX as LauncherCancelIcon } from "@tabler/icons-react"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { IconChevronDown, IconChevronRight, IconList, IconSearch } from "@tabler/icons-react"
@@ -41,7 +42,7 @@ export function CategoriesDialog({ categories, selected, onApply, triggerClassNa
   const groups = useMemo(() => {
     const map = new Map<string, CategoriesDialogCategory[]>()
     for (const category of categories) {
-      const key = category.source ?? "both"
+      const key = category.source ?? (category.header === "FTB" ? "ftb" : "both")
       const list = map.get(key)
       if (list) list.push(category)
       else map.set(key, [category])
@@ -92,6 +93,7 @@ export function CategoriesDialog({ categories, selected, onApply, triggerClassNa
             const groupLabels: Record<string, string> = {
               modrinth: "Modrinth",
               curseforge: "CurseForge",
+              ftb: "FTB",
               both: t("servers.addons.bothPlatforms"),
             }
             return (
@@ -146,7 +148,7 @@ export function CategoriesDialog({ categories, selected, onApply, triggerClassNa
                         <img data-ui="instance-categories-dialog-img-1" src={cat.icon} alt="" className="w-4 h-4 shrink-0 rounded-sm object-contain" />
                       )}
                       <span data-ui="instance-categories-dialog-span-5" className="flex-1">{cat.name}</span>
-                      {cat.header !== "categories" && (
+                      {cat.header !== "categories" && cat.header !== "FTB" && (
                         <span data-ui="instance-categories-dialog-span-6" className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">{cat.header}</span>
                       )}
                     </label>
@@ -169,9 +171,9 @@ export function CategoriesDialog({ categories, selected, onApply, triggerClassNa
           <button data-ui="instance-categories-dialog-button-4"
             type="button"
             onClick={() => setOpen(false)}
-            className="rounded-lg border border-border px-4 py-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+            className="rounded-lg border border-border bg-muted px-4 py-2 text-xs font-medium text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors"
           >
-            {t("common.cancel")}
+            {<span className="inline-flex items-center justify-center gap-2"><LauncherCancelIcon className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />{t("common.cancel")}</span>}
           </button>
           <button data-ui="instance-categories-dialog-button-5"
             type="button"

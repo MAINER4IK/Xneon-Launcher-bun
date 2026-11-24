@@ -1,3 +1,4 @@
+import { ModalCloseButton } from "@/components/ui/modal-close-button"
 import { createPortal } from "react-dom"
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -86,7 +87,7 @@ export function OnboardingModal({ selectedTheme, themes, onSelectTheme, onFinish
   useEffect(() => {
     let cancelled = false
     const loadSettings = async () => {
-      const api = window.electronAPI
+      const api = window.electrobunAPI
       if (!api) return
       const [min, max, discoveredInstances] = await Promise.all([
         api.getSetting("memoryMin"),
@@ -152,14 +153,14 @@ export function OnboardingModal({ selectedTheme, themes, onSelectTheme, onFinish
     setError("")
   }
 
-  const handleProviderLogin = async (provider: "elyby" | "xnskins" | "microsoft") => {
+  const handleProviderLogin = async (provider: "elyby" | "xnskins" | "microsoft", requestId?: string) => {
     setError("")
     const loadingSetters = { elyby: setElyByLoading, xnskins: setXnSkinsLoading, microsoft: setMicrosoftLoading }
     const loginFns = { elyby: "loginElyBy", xnskins: "loginXnSkins", microsoft: "loginMicrosoft" } as const
     loadingSetters[provider](true)
     try {
-      const result = await (window.electronAPI as any)?.[loginFns[provider]]()
-      if (result) addAccount({ id: result.id, type: provider, username: result.username, uuid: result.uuid, accessToken: result.accessToken, refreshToken: result.refreshToken, skinUrl: result.skinUrl, isActive: accounts.length === 0 })
+      const result = await (window.electrobunAPI as any)?.[loginFns[provider]](requestId)
+      if (result) addAccount({ id: result.id, type: provider, username: result.username, uuid: result.uuid, skinUrl: result.skinUrl, isActive: accounts.length === 0 })
     } catch (e) { setError(e instanceof Error ? e.message : copy.errors.loginFailed) }
     finally { loadingSetters[provider](false) }
   }
@@ -177,7 +178,7 @@ export function OnboardingModal({ selectedTheme, themes, onSelectTheme, onFinish
     setImportingInstances(true)
     setError("")
     try {
-      const api = window.electronAPI
+      const api = window.electrobunAPI
       if (!api) return
       const importFn = api.importLauncherInstances ?? api.importGdLauncherInstances
       if (!importFn) return
@@ -192,7 +193,7 @@ export function OnboardingModal({ selectedTheme, themes, onSelectTheme, onFinish
   }
 
   const persistLauncherSettings = async () => {
-    const api = window.electronAPI
+    const api = window.electrobunAPI
     if (!api) return
     await Promise.all([
       api.setSetting("memoryMin", normalizeMemoryValue(memoryMin, "512M")),
@@ -239,10 +240,7 @@ export function OnboardingModal({ selectedTheme, themes, onSelectTheme, onFinish
                 <p data-ui="onboarding-modal-p-1" className="mt-1 text-sm text-muted-foreground">{currentStep.description}</p>
               </div>
             </div>
-            <button data-ui="onboarding-modal-button-1" type="button" onClick={onSkip}
-              className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-border bg-card px-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-              <IconX className="h-4 w-4" strokeWidth={1.8} /> {copy.skip}
-            </button>
+            <ModalCloseButton onClick={onSkip} title={copy.skip} />
           </div>
           <div data-ui="onboarding-modal-div-8" className="mt-4 h-2 overflow-hidden rounded-full bg-muted">
             <div data-ui="onboarding-modal-div-9" className="h-full rounded-full bg-primary transition-all duration-300"

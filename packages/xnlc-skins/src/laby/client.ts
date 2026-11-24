@@ -12,8 +12,8 @@
 import { fetchWithRetry } from "@xnlc/core/retry"
 import type { LabyApiError } from "@xnlc/types"
 
-const BROWSER_UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+declare const XNLC_APPLICATION_USER_AGENT: string | undefined
+const USER_AGENT = typeof XNLC_APPLICATION_USER_AGENT === "string" ? XNLC_APPLICATION_USER_AGENT : "xnlc-skins"
 
 const ATTEMPTS = 3
 const RETRY_DELAY_MS = 800
@@ -60,7 +60,7 @@ export class LabyClient {
       try {
         const res = await fetchWithRetry(
           url,
-          { headers: { Accept: "application/json", "User-Agent": BROWSER_UA }, signal },
+          { headers: { Accept: "application/json", "User-Agent": USER_AGENT }, signal },
           { retries: 1 },
         )
         if (res.ok) return (await res.json()) as T
@@ -83,7 +83,7 @@ export class LabyClient {
   /** Скачивание текстуры: без повторов, результат проверяет вызывающая сторона. */
   async texture(url: string): Promise<Uint8Array | null> {
     try {
-      const res = await fetchWithRetry(url, { headers: { Accept: "image/png", "User-Agent": BROWSER_UA } }, { retries: 2 })
+      const res = await fetchWithRetry(url, { headers: { Accept: "image/png", "User-Agent": USER_AGENT } }, { retries: 2 })
       if (!res.ok) return null
       return new Uint8Array(await res.arrayBuffer())
     } catch {

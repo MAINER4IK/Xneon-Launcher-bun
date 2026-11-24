@@ -1,13 +1,14 @@
 import { useContentEnter, CONTENT_ENTER_DELAYED } from "../content-motion"
 import { useTranslation } from "react-i18next"
 import { EmptyState } from "@/components/ui/empty-state"
-import { IconDownload, IconInfoCircle, IconLoader2, IconPackage, IconSearch, IconExternalLink } from "@tabler/icons-react"
+import { IconDownload, IconInfoCircle, IconLoader2, IconColorSwatch, IconSearch, IconExternalLink } from "@tabler/icons-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { openProjectPage, projectPageUrl } from "@/lib/project-links"
 import { Spinner } from "./spinner"
 import { formatDownloads, isFtbCategoryTag } from "./utils"
 import { Pagination } from "./pagination"
 import { CategoryBadge } from "./category-badge"
+import "./instance-search-card.css"
 import { CategoriesDialog, type CategoriesDialogCategory } from "./categories-dialog"
 import { MOD_LOADER_OPTIONS } from "./instance-browse-toolbar"
 import { LoaderIcon } from "./loader-icon"
@@ -143,13 +144,13 @@ export function InstanceFtb({
         ) : (
           <div data-ui="instance-instance-ftb-div-5" className="grid gap-3">
             {ftbResults.map(pack => (
-              <div data-ui="instance-instance-ftb-div-6" key={pack.projectId} className="rounded-2xl border border-border bg-card p-4 hover:border-primary/40 transition-colors">
+              <div data-ui="instance-instance-ftb-div-6" key={pack.projectId} className="instance-search-card rounded-2xl border border-border bg-card p-4 hover:border-primary/40 transition-colors">
                 <div data-ui="instance-instance-ftb-div-7" className="flex flex-wrap items-center gap-4">
                   <div data-ui="instance-instance-ftb-div-8" className="flex min-w-0 flex-1 items-center gap-4">
                     <div data-ui="instance-instance-ftb-div-9" className="w-14 h-14 rounded-2xl bg-muted/70 flex items-center justify-center overflow-hidden flex-shrink-0">
                       {pack.iconUrl
                         ? <img data-ui="instance-instance-ftb-img-1" src={pack.iconUrl} alt="" className="w-full h-full object-cover" />
-                        : <IconPackage className="w-6 h-6 text-muted-foreground/40" strokeWidth={1.75} />}
+                        : <IconColorSwatch className="w-6 h-6 text-muted-foreground/40" strokeWidth={1.75} />}
                     </div>
                     <div data-ui="instance-instance-ftb-div-10" className="flex-1 min-w-0">
                       <p data-ui="instance-instance-ftb-p-1" className="text-base font-semibold text-foreground truncate">{pack.name}</p>
@@ -157,7 +158,7 @@ export function InstanceFtb({
                       <div data-ui="instance-instance-ftb-div-11" className="mt-2 flex flex-wrap items-center gap-2">
                         <span data-ui="instance-instance-ftb-span-3" className="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">{formatDownloads(pack.downloadCount)} {t("builds.downloads")}</span>
                         {pack.categories?.filter(isFtbCategoryTag).slice(0, 3).map(category => (
-                          <CategoryBadge key={category} name={category} source="ftb" />
+                          <CategoryBadge key={category} name={category} source="ftb" responsive className="instance-search-card-category-badge" />
                         ))}
                       </div>
                     </div>
@@ -199,12 +200,14 @@ export function InstanceFtb({
             ))}
           </div>
         )}
-        <Pagination
-          currentPage={page}
-          totalPages={totalPages}
-          onPageChange={onPageChange}
-          className="mt-auto"
-        />
+        {!ftbLoading && (
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            onPageChange={onPageChange}
+            className="mt-auto"
+          />
+        )}
       </div>
     </div>
   )

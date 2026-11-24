@@ -1,11 +1,27 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react"
 import type { McServerInfo, McServerState } from "@xnlc/types"
 import { useCategoryIcons } from "@/src/hooks/use-category-icons"
 import { useCategoryList } from "@/src/hooks/use-category-list"
 
+// Как у инстансов: мгновенный локальный снимок и фоновая актуализация по TTL.
+// Удалённые серверы не сохраняем между монтированиями: доступ зависит от аккаунта.
+let serversCache: McServerInfo[] | null = null
+let serversCacheAt = 0
+let hadRemoteServers = false
+let serversInFlight: Promise<McServerInfo[]> | undefined
+const SERVERS_CACHE_TTL_MS = 3000
+
 export function useMcServers() {
-  const [servers, setServers] = useState<McServerInfo[]>([])
-  const [loading, setLoading] = useState(true)
+  const [servers, setServersState] = useState<McServerInfo[]>(() => serversCache ?? [])
+  const [loading, setLoading] = useState(serversCache === null)
+  const serversRef = useRef(servers)
+  const setServers = useCallback((value: SetStateAction<McServerInfo[]>) => {
+    const next = typeof value === "function" ? value(serversRef.current) : value
+    serversRef.current = next
+    hadRemoteServers = next.some(server => Boolean(server.remote))
+    serversCache = next.filter(server => !server.remote)
+    setServersState(next)
+  }, [])
   // Свёрнутые категории (как группы у сборок) — состояние только в UI.
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   // Иконки категорий — их можно задать в контекстном меню категории.
@@ -16,9 +32,10 @@ export function useMcServers() {
   } = useCategoryList("servers")
 
   const reload = useCallback(async () => {
-    setLoading(true)
+    if (serversCache === null) setLoading(true)
     try {
-      const list = await window.electronAPI?.mcServerList()
+      if (!serversInFlight) serversInFlight = (window.electrobunAPI?.mcServerList() ?? Promise.resolve([])).finally(() => { serversInFlight = undefined })
+      const list = await serversInFlight
       const incoming = Array.isArray(list) ? list : []
       // Пустой ответ — это либо «серверов нет», либо сбой IPC / недоступная БД
       // (они тоже отдают пустой список). Раньше в обоих случаях список
@@ -28,55 +45,66 @@ export function useMcServers() {
         setServers(prev => {
           if (prev.length === 0) return prev
           console.warn("[Servers] Пустой ответ БД — сохраняю уже загруженный список")
-          return prev
+          return prev.filter(server => !server.remote)
         })
       } else {
         setServers(incoming)
       }
+      serversCacheAt = performance.now()
     } catch (error) {
       console.error("[Servers] Не удалось обновить список серверов:", error)
     }
     setLoading(false)
-  }, [])
+  }, [setServers])
 
   useEffect(() => {
-    reload()
-  }, [reload])
+    if (serversCache === null || hadRemoteServers || performance.now() - serversCacheAt >= SERVERS_CACHE_TTL_MS) void reload()
+    const off = window.electrobunAPI?.onMcServerRemoteConnection(event => {
+      setServers(previous => previous.some(server => server.id === event.id)
+        ? previous.map(server => server.id === event.id ? event.info : server)
+        : [...previous, event.info])
+    })
+    const imported = () => { serversCacheAt = 0; void reload() }
+    window.addEventListener("launcher:agent-updated", imported)
+    window.addEventListener("cloud:imported", imported)
+    return () => { off?.(); window.removeEventListener("launcher:agent-updated", imported); window.removeEventListener("cloud:imported", imported) }
+  }, [reload, setServers])
 
-  const createServer = useCallback(async (data: { name: string; gameVersion: string; modloader?: string; modloaderVersion?: string; port?: number; javaPath?: string; relayEnabled?: boolean; xmx?: number; xms?: number; onlineMode?: boolean; maxPlayers?: number; customJarPath?: string; icon?: string }) => {
-    const server = await window.electronAPI?.mcServerCreate(data)
+  const createServer = useCallback(async (data: { name: string; description?: string; gameVersion: string; modloader?: string; modloaderVersion?: string; port?: number; javaPath?: string; relayEnabled?: boolean; xmx?: number; xms?: number; onlineMode?: boolean; maxPlayers?: number; customJarPath?: string; icon?: string }) => {
+    const server = await window.electrobunAPI?.mcServerCreate(data)
     if (server) setServers(prev => [server, ...prev])
     return server
   }, [])
 
   const deleteServer = useCallback(async (id: string) => {
-    await window.electronAPI?.mcServerDelete(id)
+    await window.electrobunAPI?.mcServerDelete(id)
     setServers(prev => prev.filter(s => s.id !== id))
   }, [])
 
   const updateServer = useCallback(async (id: string, update: Record<string, unknown>) => {
-    await window.electronAPI?.mcServerUpdate(id, update)
+    await window.electrobunAPI?.mcServerUpdate(id, update)
     setServers(prev => prev.map(s => s.id === id ? { ...s, ...update } as McServerInfo : s))
   }, [])
 
   const restoreServer = useCallback(async (id: string) => {
-    await window.electronAPI?.mcServerRestore(id)
+    await window.electrobunAPI?.mcServerRestore(id)
+    serversCacheAt = 0
   }, [])
 
   const listTrash = useCallback(async () => {
-    return await window.electronAPI?.mcServerListTrash() ?? []
+    return await window.electrobunAPI?.mcServerListTrash() ?? []
   }, [])
 
   const purgeTrash = useCallback(async () => {
-    await window.electronAPI?.mcServerPurgeTrash()
+    await window.electrobunAPI?.mcServerPurgeTrash()
   }, [])
 
   const permanentDelete = useCallback(async (id: string) => {
-    await window.electronAPI?.mcServerPermanentDelete(id)
+    await window.electrobunAPI?.mcServerPermanentDelete(id)
   }, [])
 
   const duplicateServer = useCallback(async (id: string) => {
-    const copy = await window.electronAPI?.mcServerDuplicate(id)
+    const copy = await window.electrobunAPI?.mcServerDuplicate(id)
     if (copy) setServers(prev => [copy, ...prev])
     return copy
   }, [])
@@ -85,7 +113,7 @@ export function useMcServers() {
   const setServerGroup = useCallback(async (id: string, group: string) => {
     const value = group.trim()
     setServers(prev => prev.map(s => s.id === id ? { ...s, group: value || undefined } : s))
-    await window.electronAPI?.mcServerUpdate(id, { group: value || null })
+    await window.electrobunAPI?.mcServerUpdate(id, { group: value || null })
   }, [])
 
   /** Переименовывает категорию у всех серверов, что в неё входят. */
@@ -101,7 +129,7 @@ export function useMcServers() {
       next.add(target)
       return next
     })
-    await Promise.all(affected.map(id => window.electronAPI?.mcServerUpdate(id, { group: target })))
+    await Promise.all(affected.map(id => window.electrobunAPI?.mcServerUpdate(id, { group: target })))
     renameCategoryIcon(oldName, target)
     renameDeclaredCategory(oldName, target)
   }, [servers, renameCategoryIcon, renameDeclaredCategory])
@@ -116,7 +144,7 @@ export function useMcServers() {
       next.delete(group)
       return next
     })
-    await Promise.all(affected.map(id => window.electronAPI?.mcServerUpdate(id, { group: null })))
+    await Promise.all(affected.map(id => window.electrobunAPI?.mcServerUpdate(id, { group: null })))
     dropCategoryIcon(group)
     dropDeclaredCategory(group)
   }, [servers, dropCategoryIcon, dropDeclaredCategory])
@@ -145,19 +173,19 @@ export function useMcServerState(id: string | null) {
 
   useEffect(() => {
     if (!id) return
-    window.electronAPI?.mcServerStatus(id).then(s => {
+    window.electrobunAPI?.mcServerStatus(id).then(s => {
       if (s) setState(s)
-    })
+    }).catch(() => {})
 
-    const unsub = window.electronAPI?.onMcServerStateChange((data) => {
+    const unsub = window.electrobunAPI?.onMcServerStateChange((data) => {
       if (data.id === id) setState(data.state)
     })
     return () => unsub?.()
   }, [id])
 
-  const start = useCallback(() => id && window.electronAPI?.mcServerStart(id), [id])
-  const stop = useCallback(() => id && window.electronAPI?.mcServerStop(id), [id])
-  const kill = useCallback(() => id && window.electronAPI?.mcServerKill(id), [id])
+  const start = useCallback(() => id && window.electrobunAPI?.mcServerStart(id), [id])
+  const stop = useCallback(() => id && window.electrobunAPI?.mcServerStop(id), [id])
+  const kill = useCallback(() => id && window.electrobunAPI?.mcServerKill(id), [id])
 
   return { state, start, stop, kill }
 }
@@ -182,17 +210,18 @@ export function useMcServerLogs(id: string | null) {
     mutedRef.current = false
     setLogs([])
 
-    window.electronAPI?.mcServerLogs(id).then(initial => {
+    window.electrobunAPI?.mcServerLogs(id).then(initial => {
       if (generation === generationRef.current && initial) setLogs(initial)
-    })
+    }).catch(() => {})
+    const unsubRemote = id.startsWith("remote:") ? window.electrobunAPI?.onMcServerRemoteSnapshot(event => { if (event.id === id && !mutedRef.current) setLogs(event.logs) }) : undefined
 
-    const unsubLog = window.electronAPI?.onMcServerLog((data) => {
+    const unsubLog = window.electrobunAPI?.onMcServerLog((data) => {
       if (data.id !== id || mutedRef.current) return
       // Строки не отбрасываем: консоль показывает всё, что пришло за сессию.
       setLogs(prev => [...prev, data.line])
     })
 
-    const unsubState = window.electronAPI?.onMcServerStateChange((data) => {
+    const unsubState = window.electrobunAPI?.onMcServerStateChange((data) => {
       if (data.id !== id) return
       if (data.state.status === "starting") {
         // Новая сессия началась — консоль обязана быть пустой, а приём строк снова открыт.
@@ -208,6 +237,7 @@ export function useMcServerLogs(id: string | null) {
     return () => {
       unsubLog?.()
       unsubState?.()
+      unsubRemote?.()
       mutedRef.current = false
     }
   }, [id])
@@ -243,13 +273,13 @@ export function useMcServerMetrics(id: string | null, isRunning: boolean) {
     // Метрики приходят push'ем из main-процесса: он сам собирает их раз в 2 секунды
     // и рассылает подписчикам. Renderer ничего не опрашивает — сбор метрик на Windows
     // спавнит PowerShell, и постоянный поллинг из компонентов был бы накладным.
-    const unsub = window.electronAPI?.onMcServerMetrics((data) => {
+    const unsub = window.electrobunAPI?.onMcServerMetrics((data) => {
       if (data.id === id) setMetrics(data.metrics)
     })
-    void window.electronAPI?.mcServerMetricsSubscribe(id)
+    void window.electrobunAPI?.mcServerMetricsSubscribe(id)
 
     return () => {
-      void window.electronAPI?.mcServerMetricsUnsubscribe(id)
+      void window.electrobunAPI?.mcServerMetricsUnsubscribe(id)
       unsub?.()
     }
   }, [id, isRunning])
@@ -276,12 +306,12 @@ export function useMcServerDownloadProgress(id: string | null) {
     // и после переподписки их больше не будет — забираем текущее состояние из main,
     // иначе баннер пропадал и казалось, что установка встала.
     let alive = true
-    window.electronAPI?.mcServerInstallState(id).then((state) => {
+    window.electrobunAPI?.mcServerInstallState(id).then((state) => {
       if (!alive || !state?.installing || !state.progress) return
       setProgress(state.progress)
     }).catch(() => {})
 
-    const unsub = window.electronAPI?.onMcServerDownloadProgress((data) => {
+    const unsub = window.electrobunAPI?.onMcServerDownloadProgress((data) => {
       if (data.id === id) {
         setProgress(data.progress)
         if (data.progress.phase === "done" || data.progress.phase === "error") {

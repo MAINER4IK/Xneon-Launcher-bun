@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { IconRefresh, IconDownload, IconX, IconCheck, IconChevronDown, IconChevronRight, IconPackage, IconAlertCircle, IconLoader2 } from "@tabler/icons-react"
+import { IconRefresh, IconDownload, IconX, IconCheck, IconChevronDown, IconChevronRight, IconPuzzle, IconPhoto, IconSparkles, IconAlertCircle, IconLoader2 } from "@tabler/icons-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeRaw from "rehype-raw"
@@ -11,12 +11,15 @@ import { ChangelogContent } from "./changelog-content"
 import { PlatformBadge } from "@/components/launcher/platform-icon"
 import type { Build, ModVersion } from "./types"
 import type { BuildContentUpdates, ContentUpdateInfo, UpdateChannel } from "@xnlc/types"
+import { scopedContentUpdates } from "@/lib/content-update-state"
 
 const CHANNELS: Array<{ id: UpdateChannel; labelKey: string }> = [
   { id: "release", labelKey: "updates.channel.release" },
   { id: "beta", labelKey: "updates.channel.beta" },
   { id: "alpha", labelKey: "updates.channel.alpha" },
 ]
+
+const CONTENT_TYPE_ICONS = { mods: IconPuzzle, resourcepacks: IconPhoto, shaders: IconSparkles } as const
 
 const CONTENT_TYPE_LABEL_KEYS: Record<ContentUpdateInfo["contentType"], string> = {
   mods: "builds.tab.mods",
@@ -55,6 +58,7 @@ const mdComponents: React.ComponentProps<typeof ReactMarkdown>["components"] = {
 
 interface InstanceUpdatesDialogProps {
   activeBuild: Build
+  contentType: ContentUpdateInfo["contentType"]
   open: boolean
   onOpenChange: (open: boolean) => void
   updateItemVersion: (buildId: string, type: "mods" | "resourcepacks" | "shaders", itemId: string, newVersion: ModVersion) => Promise<boolean>
@@ -62,6 +66,7 @@ interface InstanceUpdatesDialogProps {
 
 export const InstanceUpdatesDialog = memo(function InstanceUpdatesDialog({
   activeBuild,
+  contentType,
   open,
   onOpenChange,
   updateItemVersion,
@@ -77,6 +82,7 @@ export const InstanceUpdatesDialog = memo(function InstanceUpdatesDialog({
   const [downloadProgress, setDownloadProgress] = useState<{ itemId: string; percent: number | null; fileName?: string } | null>(null)
   const activeDownloadRef = useRef<string | null>(null)
   const checkSeqRef = useRef(0)
+  const visibleUpdates = useMemo(() => scopedContentUpdates(result?.updates ?? [], contentType), [result, contentType])
 
   /**
    * Иконки установленного контента по id. Кэш обновлений хранит только сетевые
@@ -85,18 +91,18 @@ export const InstanceUpdatesDialog = memo(function InstanceUpdatesDialog({
    */
   const installedIcons = useMemo(() => {
     const map = new Map<string, string>()
-    const lists = [activeBuild.mods, activeBuild.resourcepacks, activeBuild.shaders]
+    const lists = [activeBuild[contentType]]
     for (const list of lists) {
       for (const item of list ?? []) {
         if (item?.id && item.icon_url) map.set(item.id, item.icon_url)
       }
     }
     return map
-  }, [activeBuild.mods, activeBuild.resourcepacks, activeBuild.shaders])
+  }, [activeBuild.mods, activeBuild.resourcepacks, activeBuild.shaders, contentType])
 
   // Прогресс скачивания нового файла — рисуем полоску прямо на элементе обновления
   useEffect(() => {
-    const off = window.electronAPI?.onContentDownloadProgress?.((progress) => {
+    const off = window.electrobunAPI?.onContentDownloadProgress?.((progress) => {
       const itemId = activeDownloadRef.current
       if (!itemId) return
       const percent = progress.total > 0
@@ -111,7 +117,7 @@ export const InstanceUpdatesDialog = memo(function InstanceUpdatesDialog({
     const seq = ++checkSeqRef.current
     setChecking(true)
     try {
-      const fresh = await window.electronAPI?.checkBuildContentUpdates(activeBuild.id, selectedChannel)
+      const fresh = await window.electrobunAPI?.checkBuildContentUpdates(activeBuild.id, selectedChannel)
       if (seq !== checkSeqRef.current) return
       setResult(fresh ?? { buildId: activeBuild.id, channel: selectedChannel, checkedAt: Date.now(), updates: [] })
       window.dispatchEvent(new CustomEvent("content-updates-changed"))
@@ -128,27 +134,35 @@ export const InstanceUpdatesDialog = memo(function InstanceUpdatesDialog({
     setExpanded(new Set())
     setUpdateAllState(null)
     let cancelled = false
-    void window.electronAPI?.getContentUpdatesCache().then((cache) => {
-      if (cancelled) return
-      const cached = cache?.[activeBuild.id]
-      if (cached) {
-        setResult(cached)
-        setChannel(cached.channel ?? "release")
-      }
-    })
-    void runCheck(channel)
-    return () => { cancelled = true }
+    void (async () => {
+      let selectedChannel = channel
+      try {
+        const cache = await window.electrobunAPI?.getContentUpdatesCache()
+        if (cancelled) return
+        const cached = cache?.[activeBuild.id]
+        if (cached) {
+          setResult(cached)
+          selectedChannel = cached.channel ?? "release"
+          setChannel(selectedChannel)
+        }
+      } catch { /* Без кэша сразу проверяем API. */ }
+      if (!cancelled) await runCheck(selectedChannel)
+    })()
+    return () => { cancelled = true; ++checkSeqRef.current; setChecking(false) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, activeBuild.id])
+  }, [open, activeBuild.id, contentType])
 
   const handleChannelChange = useCallback((next: UpdateChannel) => {
     setChannel(next)
     void runCheck(next)
   }, [runCheck])
 
-  const handleDismissLocal = useCallback((itemId: string) => {
+  const handleDismissLocal = useCallback(async (itemId: string) => {
+    // Ответ проверки, начавшейся до установки, больше не актуален.
+    ++checkSeqRef.current
+    setChecking(false)
     setResult((prev) => prev ? { ...prev, updates: prev.updates.filter((u) => u.itemId !== itemId) } : prev)
-    void window.electronAPI?.dismissContentUpdate(activeBuild.id, itemId)
+    try { await window.electrobunAPI?.dismissContentUpdate(activeBuild.id, itemId) } catch { /* Установка уже записана; сбой бейджа не отменяет её. */ }
     window.dispatchEvent(new CustomEvent("content-updates-changed"))
   }, [activeBuild.id])
 
@@ -158,7 +172,7 @@ export const InstanceUpdatesDialog = memo(function InstanceUpdatesDialog({
     if (update.source === "curseforge" && !version.files?.[0]?.url) {
       const fileId = Number(version.id)
       const url = update.modId && Number.isFinite(fileId)
-        ? await window.electronAPI?.modsCurseforgeDownloadUrl(fileId, update.modId)
+        ? await window.electrobunAPI?.modsCurseforgeDownloadUrl(fileId, update.modId)
         : null
       if (!url) return false
       version = {
@@ -177,7 +191,7 @@ export const InstanceUpdatesDialog = memo(function InstanceUpdatesDialog({
     try {
       const ok = await applyUpdate(update)
       if (ok) {
-        handleDismissLocal(update.itemId)
+        await handleDismissLocal(update.itemId)
       } else {
         setFailedIds((prev) => new Set(prev).add(update.itemId))
       }
@@ -189,7 +203,7 @@ export const InstanceUpdatesDialog = memo(function InstanceUpdatesDialog({
   }, [applyUpdate, handleDismissLocal])
 
   const handleUpdateAll = useCallback(async () => {
-    const queue = result?.updates ?? []
+    const queue = visibleUpdates
     if (queue.length === 0 || updateAllState) return
     setUpdateAllState({ done: 0, total: queue.length })
     for (const update of queue) {
@@ -199,7 +213,7 @@ export const InstanceUpdatesDialog = memo(function InstanceUpdatesDialog({
       try {
         const ok = await applyUpdate(update)
         if (ok) {
-          handleDismissLocal(update.itemId)
+          await handleDismissLocal(update.itemId)
         } else {
           setFailedIds((prev) => new Set(prev).add(update.itemId))
         }
@@ -211,19 +225,19 @@ export const InstanceUpdatesDialog = memo(function InstanceUpdatesDialog({
       }
     }
     setUpdateAllState(null)
-  }, [result, updateAllState, applyUpdate, handleDismissLocal])
+  }, [visibleUpdates, updateAllState, applyUpdate, handleDismissLocal])
 
   const groupedUpdates = useMemo(() => {
     const groups = new Map<ContentUpdateInfo["contentType"], ContentUpdateInfo[]>()
-    for (const update of result?.updates ?? []) {
+    for (const update of visibleUpdates) {
       const list = groups.get(update.contentType)
       if (list) list.push(update)
       else groups.set(update.contentType, [update])
     }
     return groups
-  }, [result])
+  }, [visibleUpdates])
 
-  const totalUpdates = result?.updates.length ?? 0
+  const totalUpdates = visibleUpdates.length
 
   if (!open) return null
 
@@ -257,7 +271,7 @@ export const InstanceUpdatesDialog = memo(function InstanceUpdatesDialog({
               >
                 {checking ? <IconLoader2 className="w-4 h-4 text-primary animate-spin" strokeWidth={1.75} /> : <IconRefresh className="w-4 h-4" strokeWidth={1.75} />}
               </button>
-              <button data-ui="instance-instance-updates-dialog-button-2"
+              <button data-modal-close data-ui="instance-instance-updates-dialog-button-2"
                 type="button"
                 onClick={() => onOpenChange(false)}
                 className="p-2 rounded-lg border border-border bg-muted/60 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
@@ -296,7 +310,7 @@ export const InstanceUpdatesDialog = memo(function InstanceUpdatesDialog({
 
         <div data-ui="instance-instance-updates-dialog-div-8" className="flex-1 min-h-0 overflow-y-auto p-5">
           {checking && !result ? (
-            <div data-ui="instance-instance-updates-dialog-div-9" className="flex items-center justify-center py-16">
+            <div data-ui="instance-instance-updates-dialog-div-9" className="flex min-h-full items-center justify-center">
               <IconLoader2 className="h-6 w-6 text-primary animate-spin" strokeWidth={1.75} />
             </div>
           ) : totalUpdates === 0 ? (
@@ -321,6 +335,7 @@ export const InstanceUpdatesDialog = memo(function InstanceUpdatesDialog({
                     {updates.map((update) => {
                       const isUpdating = updatingIds.has(update.itemId)
                       const isFailed = failedIds.has(update.itemId)
+                      const ContentIcon = CONTENT_TYPE_ICONS[update.contentType]
                       const isExpanded = expanded.has(update.itemId)
                       const progress = downloadProgress?.itemId === update.itemId ? downloadProgress : null
                       const isIndeterminate = progress?.percent === null
@@ -337,7 +352,7 @@ export const InstanceUpdatesDialog = memo(function InstanceUpdatesDialog({
                               {(update.iconUrl ?? installedIcons.get(update.itemId)) ? (
                                 <img data-ui="instance-instance-updates-dialog-img-2" src={update.iconUrl ?? installedIcons.get(update.itemId)} alt="" className="h-full w-full object-cover" />
                               ) : (
-                                <IconPackage className="h-5 w-5 text-muted-foreground/50" strokeWidth={1.75} />
+                                <ContentIcon className="h-5 w-5 text-muted-foreground/50" strokeWidth={1.75} />
                               )}
                             </div>
                             <div data-ui="instance-instance-updates-dialog-div-18" className="min-w-0 flex-1">

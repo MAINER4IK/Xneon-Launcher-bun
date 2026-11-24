@@ -1,24 +1,51 @@
-@import 'tailwindcss';
+@import 'tailwindcss' source(none);
 @import 'tw-animate-css';
 @import './theme-surfaces.css';
 @import './theme-opaque-surfaces.css';
+/* Сканируем только renderer: изменения main, тестов и сборочных файлов не меняют CSS. */
+@source './';
+@source '../components';
+@source '../lib';
+@source '../index.html';
 
-/* Кнопки корзины во всех разделах используют акцент выбранной темы. */
-:where(button, [role="menuitem"]):has(> svg.icon-tabler-trash):not(.bg-primary) {
+
+/* Удаление во всех разделах: тот же акцентный фон, что в корзине.
+   Переход в корзину — навигация, а не удаление: его оформление задают табы.
+   Пункты меню сохраняют свою геометрию и области нажатия. */
+:where(button, [role="menuitem"]):not([data-action="open-trash"]):has(> svg:is(.icon-tabler-trash, .tabler-icon-trash)):not(.bg-primary) {
   color: var(--primary);
-  background-color: color-mix(in srgb, var(--primary) 8%, var(--card));
-  border-color: color-mix(in srgb, var(--primary) 24%, var(--border));
+  background-color: color-mix(in srgb, var(--primary) 10%, var(--card));
+  border-color: transparent;
 }
-:where(button, [role="menuitem"]):has(> svg.icon-tabler-trash):not(.bg-primary):not(:disabled):hover {
+:where(button):not([data-action="open-trash"]):has(> svg:is(.icon-tabler-trash, .tabler-icon-trash)):not(.bg-primary):not([role="menuitem"]) {
+  border-radius: var(--radius-lg);
+  border-width: 0;
+  width: auto;
+  height: auto;
+  min-height: 1.75rem;
+  padding: 0.375rem 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+:where(button, [role="menuitem"]):not([data-action="open-trash"]):has(> svg:is(.icon-tabler-trash, .tabler-icon-trash)):not(.bg-primary):not(:disabled):hover {
   color: var(--primary);
-  background-color: color-mix(in srgb, var(--primary) 16%, var(--card));
+  background-color: color-mix(in srgb, var(--primary) 20%, var(--card));
 }
-:where(button, [role="menuitem"]):has(> svg.icon-tabler-trash):focus-visible {
+:where(button, [role="menuitem"]):not([data-action="open-trash"]):has(> svg:is(.icon-tabler-trash, .tabler-icon-trash)):focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
-:where(button, [role="menuitem"]):has(> svg.icon-tabler-trash) > svg.icon-tabler-trash {
+:where(button, [role="menuitem"]):not([data-action="open-trash"]):has(> svg:is(.icon-tabler-trash, .tabler-icon-trash)) > svg:is(.icon-tabler-trash, .tabler-icon-trash) {
   color: inherit;
+}
+:where(button):not([data-action="open-trash"]):not([role="menuitem"]):has(> svg:is(.icon-tabler-trash, .tabler-icon-trash)) > svg:is(.icon-tabler-trash, .tabler-icon-trash) {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex-shrink: 0;
 }
 
 /* Элементы без собственного оформления фокуса используют цвет активной темы. */
@@ -105,6 +132,35 @@ svg[data-icon] > :not(title) {
 .theme-appearance :where([data-component$="-card"], [class~="bg-card"], [class*="bg-card/"]) {
   backdrop-filter: blur(var(--theme-blur-card, 0px));
   border-radius: var(--theme-radius, revert-layer);
+}
+
+/* Оба вида модальных окон используют ту же прозрачность, что и карточки. */
+:is(.theme-blur-card, .theme-with-background) :is(
+  [data-slot="dialog-content"],
+  [data-slot="modal-content"] > :is(div, section, form),
+  .launcher-modal-overlay > :is(div, section, form):not([data-slot="modal-content"])
+) {
+  background-color: color-mix(in srgb, var(--card) 80%, transparent);
+  backdrop-filter: blur(var(--theme-blur-card, 0px));
+}
+
+/* Внутренние панели не должны закрывать прозрачный фон сплошной заливкой. */
+:is(.theme-blur-card, .theme-with-background) :is([data-slot="dialog-content"], [data-slot="modal-content"], .launcher-modal-overlay)
+  :where(div, section, form):where([class~="bg-background"], [class*="bg-background/"], [class~="bg-muted"], [class*="bg-muted/"]) {
+  background-color: color-mix(in srgb, var(--muted) 55%, transparent);
+}
+
+.theme-blur-card [data-component="language-option"] {
+  background-color: color-mix(in srgb, var(--muted) 55%, transparent);
+  backdrop-filter: blur(var(--theme-blur-card, 0px));
+}
+
+.theme-blur-card [data-component="language-option"][aria-pressed="true"] {
+  background-color: color-mix(in srgb, var(--primary) 12%, color-mix(in srgb, var(--card) 55%, transparent));
+}
+
+.theme-blur-card [data-component="language-option"]:hover {
+  background-color: color-mix(in srgb, var(--muted) 70%, transparent);
 }
 @keyframes theme-halo-drift {
   from { transform: scale(1.1) rotate(-6deg); }
@@ -381,6 +437,25 @@ html.theme-with-background #launcher-root {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
+
+[data-settings-section]::-webkit-scrollbar {
+  width: 6px;
+}
+
+[data-settings-section]::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 999px;
+}
+
+[data-settings-section]::-webkit-scrollbar-thumb {
+  border: 0;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+[data-settings-section]::-webkit-scrollbar-thumb:hover {
+  background: var(--border);
+}
 .scrollbar-none::-webkit-scrollbar {
   display: none;
 }
@@ -436,7 +511,8 @@ html.theme-with-background #launcher-root {
     background: var(--primary);
     border: 2px solid var(--card);
     border-radius: var(--radius-round);
-    box-shadow: 0 0 8px var(--glow-primary);
+    box-shadow: none;
+    box-sizing: border-box;
     margin-top: -4px;
     transition:
       width 0.2s,
@@ -456,7 +532,8 @@ html.theme-with-background #launcher-root {
     height: 0.75rem;
     background: var(--primary);
     border-radius: var(--radius-round);
-    box-shadow: 0 0 8px var(--glow-primary);
+    box-shadow: none;
+    box-sizing: border-box;
     transition:
       width 0.2s,
       height 0.2s;
@@ -465,6 +542,8 @@ html.theme-with-background #launcher-root {
   &::-moz-range-progress {
     background: transparent;
   }
+
+  &:hover::-webkit-slider-thumb { margin-top: -6px; }
 
   &:hover::-webkit-slider-thumb,
   &:hover::-moz-range-thumb {
@@ -594,3 +673,103 @@ pre[class*="language-"] {
 }
 
 
+
+/* Единый крестик закрытия для Radix и самостоятельных модальных окон. */
+button[data-modal-close] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background-color: var(--muted);
+  color: var(--primary);
+  opacity: 1;
+  transition: background-color 150ms, border-color 150ms;
+}
+button[data-modal-close]:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--primary) 10%, var(--muted));
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
+}
+button[data-modal-close] > svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  color: inherit;
+  pointer-events: none;
+}
+button[data-modal-close]:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+button[data-modal-close]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+
+/* Кегль темы меняет только текст. Размер rem остаётся системным для отступов и панелей. */
+:root {
+  --theme-font-size: 16px;
+  --text-xs: calc(var(--theme-font-size) * 0.75);
+  --text-sm: calc(var(--theme-font-size) * 0.875);
+  --text-base: calc(var(--theme-font-size) * 1.0);
+  --text-lg: calc(var(--theme-font-size) * 1.125);
+  --text-xl: calc(var(--theme-font-size) * 1.25);
+  --text-2xl: calc(var(--theme-font-size) * 1.5);
+  --text-3xl: calc(var(--theme-font-size) * 1.875);
+  --text-4xl: calc(var(--theme-font-size) * 2.25);
+  --text-5xl: calc(var(--theme-font-size) * 3.0);
+  --text-6xl: calc(var(--theme-font-size) * 3.75);
+  --text-7xl: calc(var(--theme-font-size) * 4.5);
+  --text-8xl: calc(var(--theme-font-size) * 6.0);
+  --text-9xl: calc(var(--theme-font-size) * 8.0);
+}
+@layer base {
+  body { font-size: var(--theme-font-size); }
+}
+@layer utilities {
+  .text-\[8px\] { font-size: calc(var(--theme-font-size) * 0.5); }
+  .text-\[9px\] { font-size: calc(var(--theme-font-size) * 0.5625); }
+  .text-\[10px\] { font-size: calc(var(--theme-font-size) * 0.625); }
+  .text-\[11px\] { font-size: calc(var(--theme-font-size) * 0.6875); }
+  .text-\[12px\] { font-size: calc(var(--theme-font-size) * 0.75); }
+  .text-\[13px\] { font-size: calc(var(--theme-font-size) * 0.8125); }
+  .text-\[14px\] { font-size: calc(var(--theme-font-size) * 0.875); }
+  .text-\[15px\] { font-size: calc(var(--theme-font-size) * 0.9375); }
+  .text-\[16px\] { font-size: calc(var(--theme-font-size) * 1.0); }
+  .text-\[17px\] { font-size: calc(var(--theme-font-size) * 1.0625); }
+  .text-\[18px\] { font-size: calc(var(--theme-font-size) * 1.125); }
+  .text-\[19px\] { font-size: calc(var(--theme-font-size) * 1.1875); }
+  .text-\[20px\] { font-size: calc(var(--theme-font-size) * 1.25); }
+  .text-\[21px\] { font-size: calc(var(--theme-font-size) * 1.3125); }
+  .text-\[22px\] { font-size: calc(var(--theme-font-size) * 1.375); }
+  .text-\[23px\] { font-size: calc(var(--theme-font-size) * 1.4375); }
+  .text-\[24px\] { font-size: calc(var(--theme-font-size) * 1.5); }
+  .text-\[25px\] { font-size: calc(var(--theme-font-size) * 1.5625); }
+  .text-\[26px\] { font-size: calc(var(--theme-font-size) * 1.625); }
+  .text-\[27px\] { font-size: calc(var(--theme-font-size) * 1.6875); }
+  .text-\[28px\] { font-size: calc(var(--theme-font-size) * 1.75); }
+  .text-\[29px\] { font-size: calc(var(--theme-font-size) * 1.8125); }
+  .text-\[30px\] { font-size: calc(var(--theme-font-size) * 1.875); }
+  .text-\[31px\] { font-size: calc(var(--theme-font-size) * 1.9375); }
+  .text-\[32px\] { font-size: calc(var(--theme-font-size) * 2.0); }
+  .text-\[33px\] { font-size: calc(var(--theme-font-size) * 2.0625); }
+  .text-\[34px\] { font-size: calc(var(--theme-font-size) * 2.125); }
+  .text-\[35px\] { font-size: calc(var(--theme-font-size) * 2.1875); }
+  .text-\[36px\] { font-size: calc(var(--theme-font-size) * 2.25); }
+  .text-\[37px\] { font-size: calc(var(--theme-font-size) * 2.3125); }
+  .text-\[38px\] { font-size: calc(var(--theme-font-size) * 2.375); }
+  .text-\[39px\] { font-size: calc(var(--theme-font-size) * 2.4375); }
+  .text-\[40px\] { font-size: calc(var(--theme-font-size) * 2.5); }
+  .text-\[41px\] { font-size: calc(var(--theme-font-size) * 2.5625); }
+  .text-\[42px\] { font-size: calc(var(--theme-font-size) * 2.625); }
+  .text-\[43px\] { font-size: calc(var(--theme-font-size) * 2.6875); }
+  .text-\[44px\] { font-size: calc(var(--theme-font-size) * 2.75); }
+  .text-\[45px\] { font-size: calc(var(--theme-font-size) * 2.8125); }
+  .text-\[46px\] { font-size: calc(var(--theme-font-size) * 2.875); }
+  .text-\[47px\] { font-size: calc(var(--theme-font-size) * 2.9375); }
+  .text-\[48px\] { font-size: calc(var(--theme-font-size) * 3.0); }
+}

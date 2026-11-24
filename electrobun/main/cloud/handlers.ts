@@ -1,0 +1,457 @@
+import { registerCloudThemeHandlers, cloudThemePreview } from "./theme-handlers"
+import { accountPreviewFrom, cloudAccountPreview, invalidateCloudAccountPreviews } from "./account-preview"
+import { randomUUID } from "node:crypto"
+import { createServerWithFiles } from "../mc-server-creation"
+import type { McServerRow } from "../../db/mc-servers"
+import { createArchive } from "./archive-builder"
+import { opFailure } from "../errors"
+import { rpcRegistry, shell, app } from "../../platform/desktop"
+import path from "path"
+import fs from "fs/promises"
+import { getProvider, listProviders, type CloudProviderId } from "./registry"
+import { ensureBuildIntentDir } from "../builds"
+import { getBuildIntentPath, sanitizeFileName } from "../builds/helpers"
+import { isModpackInstalling } from "../builds/modpack-install"
+import { getMcServerDir } from "../paths"
+import { dbHelpers } from "../../db"
+import { sendToRenderer } from "../runtime"
+import { META_ICON_ENTRY, META_NAME_ENTRY } from "./archive-meta"
+import { BUILD_CATEGORY_DIRS, SERVER_CATEGORY_DIRS } from "./categories"
+import { archiveService } from "../archives/service"
+
+function sendUploadProgress(id: string, percent: number, stage: "zip" | "upload") {
+  sendToRenderer("cloud:upload-progress", { id, percent, stage })
+}
+
+async function uploadWithProgress<T>(
+  id: string,
+  stage: "zip" | "upload",
+  fn: () => Promise<T>,
+): Promise<T> {
+  sendUploadProgress(id, 0, stage)
+  const result = await fn()
+  sendUploadProgress(id, 100, stage)
+  return result
+}
+
+/**
+ * Определяет «корневой сегмент» архива.
+ *
+ * Архивы приходят в двух видах:
+ *   1) с общей корневой папкой:  `MyBuild/mods/foo.jar`   (zip.addLocalFolder)
+ *   2) без неё:                  `mods/foo.jar`           (archive-builder)
+ *
+ * Раньше код всегда брал `parts[1]`, из-за чего для архивов без корня категория
+ * определялась по ИМЕНИ ФАЙЛА и при выборочном импорте не извлекалось ничего.
+ * Здесь корень определяется по факту: если первый сегмент не является известным
+ * каталогом-категорией — считаем его корнем.
+ */
+function detectArchiveRoot(entryNames: string[], knownDirs: Set<string>): string | null {
+  const firstSegments = new Set<string>()
+  let multiSegmentCount = 0
+
+  for (const name of entryNames) {
+    const parts = name.replace(/\\/g, "/").split("/").filter(Boolean)
+    if (parts.length <= 1) continue // одиночные файлы в корне не задают корень
+    multiSegmentCount++
+    firstSegments.add(parts[0])
+  }
+
+  if (multiSegmentCount === 0) return null
+
+  // Все вложенные записи начинаются с одного сегмента, который сам не является
+  // известной папкой-категорией → это обёртка-корень архива. Наличие одиночных
+  // файлов в корне (readme.txt и т.п.) этому не мешает.
+  if (firstSegments.size === 1) {
+    const only = [...firstSegments][0]
+    if (!knownDirs.has(only.toLowerCase())) return only
+  }
+
+  return null
+}
+
+/**
+ * Читает ключевые поля из server.properties распакованного сервера.
+ * Если файла нет (например, его не выбрали при выборочном импорте) —
+ * возвращает безопасные значения по умолчанию.
+ */
+async function readServerProperties(serverDir: string): Promise<{ port: number; onlineMode: boolean; maxPlayers: number }> {
+  const defaults = { port: 25565, onlineMode: true, maxPlayers: 20 }
+  try {
+    const raw = await fs.readFile(path.join(serverDir, "server.properties"), "utf-8")
+    let port = defaults.port
+    let onlineMode = defaults.onlineMode
+    let maxPlayers = defaults.maxPlayers
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith("#")) continue
+      const eq = trimmed.indexOf("=")
+      if (eq === -1) continue
+      const key = trimmed.slice(0, eq).trim()
+      const value = trimmed.slice(eq + 1).trim()
+      if (key === "server-port") {
+        const parsed = Number(value)
+        if (Number.isInteger(parsed) && parsed > 0 && parsed <= 65535) port = parsed
+      } else if (key === "online-mode") {
+        onlineMode = value.toLowerCase() === "true"
+      } else if (key === "max-players") {
+        const parsed = Number(value)
+        if (Number.isInteger(parsed) && parsed > 0) maxPlayers = parsed
+      }
+    }
+    return { port, onlineMode, maxPlayers }
+  } catch {
+    return defaults
+  }
+}
+
+async function extractCloudArchive(input: string | Uint8Array, destination: string): Promise<void> {
+  await archiveService.extract(input, destination, {
+    sanitizeNames: true, skipUnsafe: true,
+    include: entry => !entry.name.split("/").some(part => part.toLowerCase() === ".xnlc-modpack"),
+  })
+}
+
+/** Извлекает из архива только файлы, чья верхняя папка входит в selectedCategories. */
+async function extractSelectedCategories(
+  input: string | Uint8Array,
+  rootDir: string,
+  categoryMap: Record<string, string[]>,
+  selectedCategories: string[],
+): Promise<void> {
+  const catSet = new Set(selectedCategories)
+  const knownDirs = new Set<string>()
+  for (const dirs of Object.values(categoryMap)) {
+    for (const dir of dirs) knownDirs.add(dir.toLowerCase())
+  }
+
+  const entries = await archiveService.list(input)
+  const root = detectArchiveRoot(entries.map((entry) => entry.name), knownDirs)
+
+  await archiveService.extract(input, rootDir, {
+    include: (entry) => {
+      if (entry.directory) return false
+      const parts = entry.name.split("/").filter(Boolean)
+      // Отбрасываем корневой сегмент, если он есть в архиве.
+      const rel = root && parts[0] === root ? parts.slice(1) : parts
+      const topDir = (rel[0] ?? "").toLowerCase()
+      if (topDir === ".xnlc-modpack") return false
+      if (!topDir) return false
+      return Object.entries(categoryMap).some(([cat, dirs]) =>
+        catSet.has(cat) && dirs.some((dir) => dir.toLowerCase() === topDir),
+      )
+    },
+    // Пути записей сохраняются: файл из `mods/x.jar` остаётся в `mods/`.
+    stripPrefix: root ? `${root}/` : undefined,
+    sanitizeNames: true,
+    skipUnsafe: true,
+  })
+}
+
+async function createBuildZip(intentPath: string, archivePath: string, id: string, categories?: string[], icon?: string, name?: string): Promise<void> {
+  await createArchive(intentPath, archivePath, {
+    categories,
+    icon,
+    name,
+    onProgress: (_stage, percent) => sendUploadProgress(id, percent, "zip"),
+  })
+}
+
+export function registerCloudHandlers() {
+  registerCloudThemeHandlers()
+  rpcRegistry.handle("cloud:list-providers", () => {
+    return listProviders()
+  })
+
+  rpcRegistry.handle("cloud:connect", async (_event, providerId: CloudProviderId, authData?: Record<string, string>) => {
+    try {
+      const provider = getProvider(providerId)
+      const result = await provider.authenticate(authData)
+      if (result.success) {
+        try { await provider.ensureBaseFolder() } catch (e) { console.error("[Cloud] ensureBaseFolder failed:", e) }
+      }
+      return result
+    } catch (e) {
+      return opFailure(e)
+    }
+  })
+
+  rpcRegistry.handle("cloud:is-connected", async (_event, providerId: CloudProviderId) => {
+    try {
+      const provider = getProvider(providerId)
+      return await provider.isAuthenticated()
+    } catch { return false }
+  })
+
+  rpcRegistry.handle("cloud:disconnect", async (_event, providerId: CloudProviderId) => {
+    try {
+      const provider = getProvider(providerId)
+      await provider.logout()
+      return { success: true }
+    } catch (e) {
+      return opFailure(e)
+    }
+  })
+
+  rpcRegistry.handle("cloud:list-files", async (_event, providerId: CloudProviderId, folderPath?: string) => {
+    try {
+      const provider = getProvider(providerId)
+      const result = await provider.listFiles(folderPath)
+      if (!result.success || !result.files) return result
+      const files: Array<(typeof result.files)[number] & { themePreview?: Awaited<ReturnType<typeof cloudThemePreview>>; accountPreview?: Awaited<ReturnType<typeof cloudAccountPreview>> }> = []
+      // Маленькие метаданные читаются параллельно, но не создают лавину запросов к облаку.
+      for (let offset = 0; offset < result.files.length; offset += 4) {
+        const batch = await Promise.all(result.files.slice(offset, offset + 4).map(async file => {
+          const themePreview = !file.isDir && file.name.endsWith(".xntheme")
+            ? await cloudThemePreview(providerId, file) : undefined
+          const accountPreview = !file.isDir && /\.json$/i.test(file.name) && (file.category === "accounts" || folderPath?.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "") === "accounts" || /(^|\/)accounts\//.test(file.path.replace(/\\/g, "/")))
+            ? await cloudAccountPreview(providerId, file) : undefined
+          return { ...file, ...(themePreview ? { themePreview } : {}), ...(accountPreview ? { accountPreview } : {}) }
+        }))
+        files.push(...batch)
+      }
+      return { ...result, files }
+    } catch (e) {
+      return opFailure(e)
+    }
+  })
+
+
+  rpcRegistry.handle("cloud:download-file", async (_event, providerId: CloudProviderId, remotePath: string, localPath: string) => {
+    try {
+      const provider = getProvider(providerId)
+      return await provider.downloadFile(remotePath, localPath)
+    } catch (e) {
+      return opFailure(e)
+    }
+  })
+
+  rpcRegistry.handle("cloud:delete-file", async (_event, providerId: CloudProviderId, remotePath: string) => {
+    try {
+      const provider = getProvider(providerId)
+      return await provider.deleteFile(remotePath)
+    } catch (e) {
+      return opFailure(e)
+    }
+  })
+
+  rpcRegistry.handle("cloud:get-quota", async (_event, providerId: CloudProviderId) => {
+    try {
+      const provider = getProvider(providerId)
+      return await provider.getStorageQuota()
+    } catch { return null }
+  })
+
+  rpcRegistry.handle("cloud:upload-build", async (_event, providerId: string, buildName: string, uploadId?: string, categories?: string[]) => {
+    // Имя файла архива обязано быть безопасным для файловой системы (оно же
+    // используется как временный путь на диске), поэтому `:` и прочее
+    // запрещённое в именах файлов заменяется — настоящее имя сборки едет
+    // внутри архива метазаписью META_NAME_ENTRY.
+    const safeName = sanitizeFileName(buildName)
+    const archivePath = path.join(app.getPath("temp"), `${safeName}.zip`)
+    try {
+      const intentPath = await ensureBuildIntentDir(buildName)
+      try { await fs.access(intentPath) } catch { return { success: false, error: "Сборка не найдена" } }
+
+      const id = uploadId ?? `build-${safeName}`
+
+      // Иконка сборки хранится в БД (data-URL), в папке интента её нет.
+      // Кладём её в архив отдельной метазаписью, чтобы при восстановлении из
+      // облака сборка получила ту же иконку. Имя в облаке могло быть нормализовано,
+      // поэтому ищем запись тем же нестрогим сравнением, что и в UI облачного браузера.
+      const builds = await dbHelpers.loadBuildsLight()
+      const norm = (s: string) => s.trim().toLowerCase()
+      const target = norm(buildName)
+      const buildIcon = builds.find((b) => {
+        const candidate = norm(b.name)
+        return candidate === target || candidate.includes(target) || target.includes(candidate)
+      })?.icon ?? ""
+
+      await uploadWithProgress(id, "zip", () => createBuildZip(intentPath, archivePath, id, categories, buildIcon, buildName))
+
+      const provider = getProvider(providerId)
+      const result = await uploadWithProgress(id, "upload", () =>
+        provider.uploadFile(archivePath, `builds/${safeName}.zip`, (percent) => {
+          sendUploadProgress(id, percent, "upload")
+        })
+      )
+
+      return result
+    } catch (e) {
+      return opFailure(e)
+    } finally {
+      // Временный архив убираем всегда: раньше unlink стоял только на успешном
+      // пути, и при ошибке zip оставался висеть в temp.
+      try { await fs.unlink(archivePath) } catch { /* noop */ }
+    }
+  })
+
+  rpcRegistry.handle("cloud:upload-server", async (_event, providerId: string, serverId: string, serverName: string, uploadId?: string, categories?: string[]) => {
+    const safeName = serverName.replace(/[/\\?%*:|"<>]/g, "_").trim() || serverId
+    const archivePath = path.join(app.getPath("temp"), `server-${safeName}.zip`)
+    try {
+      const serverDir = getMcServerDir(serverId)
+      try { await fs.access(serverDir) } catch { return { success: false, error: "Папка сервера пуста или не найдена" } }
+
+      const id = uploadId ?? `server-${serverId}`
+
+      // Иконка сервера хранится в БД (data-URL), в папке сервера её нет —
+      // кладём в архив метазаписью, чтобы при восстановлении она не терялась.
+      const serverRow = await dbHelpers.getMcServer(serverId).catch(() => null)
+
+      await uploadWithProgress(id, "zip", () => createBuildZip(serverDir, archivePath, id, categories, serverRow?.icon ?? "", serverName))
+
+      const provider = getProvider(providerId)
+      const result = await uploadWithProgress(id, "upload", () =>
+        provider.uploadFile(archivePath, `servers/${safeName}.zip`, (percent) => {
+          sendUploadProgress(id, percent, "upload")
+        })
+      )
+
+      return result
+    } catch (e) {
+      return opFailure(e)
+    } finally {
+      try { await fs.unlink(archivePath) } catch { /* noop */ }
+    }
+  })
+
+  rpcRegistry.handle("cloud:upload-account", async (_event, providerId: CloudProviderId, account: { id: string; type: string; username: string; uuid?: string }) => {
+    const temporary = await fs.mkdtemp(path.join(app.getPath("temp"), "xneon-cloud-account-"))
+    const jsonPath = path.join(temporary, "account.json")
+    try {
+      const stored = (await dbHelpers.loadAccounts()).find(item => item.id === account.id)
+      const metadata = accountPreviewFrom(stored ?? account)
+      if (!metadata) throw new Error("Invalid account metadata")
+      // Экспортируются только ID/тип/отображение — не access/refresh token.
+      await fs.writeFile(jsonPath, JSON.stringify({ id: stored?.id ?? account.id, ...metadata }, null, 2))
+      const provider = getProvider(providerId)
+      const id = account.id
+      const result = await uploadWithProgress(id, "upload", () =>
+        provider.uploadFile(jsonPath, `accounts/${sanitizeFileName(metadata.username)}.json`, (percent) => {
+          sendUploadProgress(id, percent, "upload")
+        })
+      )
+      if (result.success) invalidateCloudAccountPreviews()
+      return result
+    } catch (e) {
+      return opFailure(e)
+    } finally {
+      await fs.rm(temporary, { recursive: true, force: true }).catch(() => {})
+    }
+  })
+
+  rpcRegistry.handle("cloud:download-and-import", async (_event, providerId: CloudProviderId, remotePath: string, fileType: string, selectedCategories?: string[]) => {
+    const fileName = path.basename(remotePath)
+    const localPath = path.join(app.getPath("temp"), fileName)
+    try {
+      const provider = getProvider(providerId)
+      const dlResult = await provider.downloadFile(remotePath, localPath)
+      if (!dlResult.success) return { success: false, error: dlResult.error }
+
+      if (fileType === "account") {
+        const text = await fs.readFile(localPath, "utf-8")
+        const account = JSON.parse(text) as { id: string; type: string; username: string; uuid?: string }
+        // Облачный файл — недоверенный ввод, возможные токены из старых копий
+        // не должны попадать обратно в renderer.
+        return { success: true, account: await restoreAccountMetadata(account) }
+      } else if (fileType === "instance") {
+        // Настоящее имя сборки лежит в архиве метазаписью: имя файла в облаке
+        // санитизировано (`:` -> `_`), и по нему сборка называлась бы неправильно.
+        let buildName = fileName.replace(/\.zip$/i, "")
+        const meta = await archiveService
+          .readEntriesText(localPath, [META_NAME_ENTRY, META_ICON_ENTRY])
+          .catch(() => new Map<string, string>())
+        const storedName = meta.get(META_NAME_ENTRY)?.trim()
+        if (storedName) buildName = storedName
+
+        if (isModpackInstalling(getBuildIntentPath(buildName))) throw new Error("MODPACK_BUSY")
+        const intentPath = await ensureBuildIntentDir(buildName)
+
+        if (selectedCategories && selectedCategories.length > 0) {
+          await extractSelectedCategories(localPath, intentPath, BUILD_CATEGORY_DIRS, selectedCategories)
+        } else {
+          await extractCloudArchive(localPath, intentPath)
+        }
+
+        // Иконка восстанавливается из метазаписи архива (её писала загрузка сборки).
+        const restoredIcon = meta.get(META_ICON_ENTRY)?.trim() ?? ""
+
+        await dbHelpers.insertBuild({
+          id: `cloud-${Date.now()}`,
+          name: buildName,
+          description: "",
+          version: "1.0",
+          modLoader: "",
+          icon: restoredIcon,
+          createdAt: new Date().toISOString(),
+          source: "local",
+          intentPath,
+          loaderVersion: undefined,
+          projectSlug: undefined,
+          playtime: 0,
+          mods: [], resourcepacks: [], shaders: [], installedMods: {},
+          modsCount: 0,
+          resourcepacksCount: 0,
+          shadersCount: 0,
+        })
+        return { success: true }
+      } else if (fileType === "server") {
+        const serverName = fileName.replace(/\.zip$/i, "").replace(/^server-/i, "")
+        const serverId = randomUUID()
+
+        // Иконка восстанавливается из метазаписи архива (её писала загрузка сервера).
+        const restoredIcon = (await archiveService
+          .readEntriesText(localPath, [META_ICON_ENTRY])
+          .catch(() => new Map<string, string>()))
+          .get(META_ICON_ENTRY)?.trim() || null
+
+        const server: McServerRow = {
+          id: serverId,
+          name: serverName,
+          // Версию игры в server.properties не пишут — оставляем текущий дефолт БД,
+          // а не «1.20.1»: он всё равно уточнится при первом запуске/анализе JAR.
+          gameVersion: "1.21.4",
+          modloader: "vanilla",
+          modloaderVersion: null,
+          port: 25565,
+          xmx: 2048,
+          xms: 1024,
+          extraJavaArgs: "",
+          javaPath: null,
+          autoRestart: 0,
+          icon: restoredIcon,
+          relayEnabled: 0,
+          onlineMode: 1,
+          maxPlayers: 20,
+          createdAt: new Date().toISOString(),
+          trashedAt: null,
+          customJar: null,
+          source: "local",
+        }
+        await createServerWithFiles(server, { store: dbHelpers, directory: getMcServerDir }, async serverDir => {
+          if (selectedCategories && selectedCategories.length > 0) {
+            await extractSelectedCategories(localPath, serverDir, SERVER_CATEGORY_DIRS, selectedCategories)
+          } else {
+            await extractCloudArchive(localPath, serverDir)
+          }
+          // Поля archive properties устанавливаются до публикации новой строки.
+          const props = await readServerProperties(serverDir)
+          server.port = props.port
+          server.onlineMode = props.onlineMode ? 1 : 0
+          server.maxPlayers = props.maxPlayers
+        })
+
+        return { success: true }
+      }
+
+      return { success: true }
+    } catch (e) {
+      return opFailure(e)
+    } finally {
+      // Скачанный во временную папку архив убираем на любом пути выхода.
+      try { await fs.unlink(localPath) } catch { /* noop */ }
+    }
+  })
+}
+import { restoreAccountMetadata } from "../account-service"

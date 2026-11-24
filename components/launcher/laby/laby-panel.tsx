@@ -5,7 +5,7 @@ import { SkinViewer3D } from "@/components/ui/skin-viewer-3d"
 import { SkinAccountPicker } from "@/components/launcher/skins/account-picker"
 import { useViewerSize } from "@/components/launcher/skins/use-viewer-size"
 import { SkinRender } from "./skin-render"
-import { labySkinPageUrl } from "@xnlc/skins"
+import { labySkinPageUrl } from "@xnlc/skins/browser"
 import type { LabySkin } from "@xnlc/types"
 import {
   IconBookmarkMinus,
@@ -118,8 +118,8 @@ export function LabyPanel({
 
           <button data-ui="laby-laby-panel-button-3"
             type="button"
-            onClick={() => void window.electronAPI?.openExternal(labySkinPageUrl(skin.hash))}
-            className="flex w-full items-center justify-center gap-1.5 rounded-xl px-4 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+            onClick={() => void window.electrobunAPI?.openExternal(labySkinPageUrl(skin.hash))}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-border bg-card px-4 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <IconExternalLink className="h-3.5 w-3.5" />
             {t("laby.openOnLaby", "Открыть на Laby")}
