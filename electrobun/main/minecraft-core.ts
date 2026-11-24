@@ -1,0 +1,112 @@
+// ============================================================
+// XNLC — Minecraft Core (backward-compat re-export layer)
+// Delegates to LaunchOrchestrator for worker lifecycle
+// ============================================================
+
+import type * as XnlcCoreNS from "@xnlc/core" with { "resolution-mode": "import" }
+import type { XnlcHandler, ResolvedLaunchRequest } from "@xnlc/core" with { "resolution-mode": "import" }
+import { logRuntime, logRuntimeDebug } from "./runtime"
+import { prepareInstanceStorageSync, getMinecraftResourceRoot } from "./shared-game-cache"
+import { LaunchOrchestrator, getLaunchOrchestrator } from "./launch-orchestrator"
+import { dbHelpers, type DbAccount } from "../db"
+
+type LaunchAccountPayload = {
+  type: "elyby" | "xnskins" | "microsoft" | "offline" | "authlib-injector"
+  username: string
+  uuid?: string
+  accessToken?: string
+}
+
+type LaunchResultPayload = {
+  success: boolean
+  pid?: number
+  error?: string
+}
+
+type XnlcModule = typeof XnlcCoreNS
+
+let xnlcModulePromise: Promise<XnlcModule> | null = null
+let handler: XnlcHandler | undefined
+
+export function loadXnlcModule(): Promise<XnlcModule> {
+  if (!xnlcModulePromise) {
+    xnlcModulePromise = import("@xnlc/core")
+  }
+  return xnlcModulePromise
+}
+
+// ---------- Handler Management ----------
+
+export async function getHandler(): Promise<XnlcHandler> {
+  if (!handler) {
+    const { createDefaultHandler } = await loadXnlcModule()
+    process.env.XNLC_GAME_DIR = getMinecraftResourceRoot()
+    handler = createDefaultHandler({
+      gameDir: process.env.XNLC_GAME_DIR,
+      resourceDir: prepareInstanceStorageSync(process.env.XNLC_GAME_DIR),
+      javaRoot: getMinecraftResourceRoot(),
+      memoryMax: "4G",
+      memoryMin: "512M",
+    })
+  }
+
+  return handler
+}
+
+/**
+ * Выполняет действие с контекстом XnlcHandler, подменяя ошибку на fallback.
+ *
+ * Fallback осмыслен для «списков» (версии загрузчиков, настройки): пустой
+ * результат там означает «нет данных», и UI это переживает. Но сбой не должен
+ * быть незаметным — раньше он уходил только в консоль main, которую пользователь
+ * не видит. Теперь пишем и в runtime-лог лаунчера (страница «Логи»), поэтому
+ * проблема с @xnlc/core или сетью видна в интерфейсе.
+ */
+export async function callHandler<T>(
+  label: string,
+  fallback: T,
+  action: (handler: XnlcHandler) => Promise<T>,
+): Promise<T> {
+  try {
+    return await action(await getHandler())
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    logRuntime(`[IPC] Failed to ${label}: ${message} — верну значение по умолчанию`)
+    return fallback
+  }
+}
+
+// ---------- Game Dir ----------
+
+export async function getGameDir(): Promise<string> {
+  return getMinecraftResourceRoot()
+}
+
+// ---------- Worker Lifecycle (delegated to LaunchOrchestrator) ----------
+
+export function clearLaunchState(): void {
+  getLaunchOrchestrator().clearState()
+}
+
+export function stopLaunchWorker(): void {
+  getLaunchOrchestrator().stop()
+}
+
+export function isLaunchActive(): boolean {
+  return getLaunchOrchestrator().isActive()
+}
+
+export function isGameDirActive(gameDir: string): boolean {
+  return getLaunchOrchestrator().isGameDirActive(gameDir)
+}
+
+export async function resolveLaunchAccount(requestAccount?: LaunchAccountPayload): Promise<DbAccount | undefined> {
+  return getLaunchOrchestrator().resolveLaunchAccount(requestAccount)
+}
+
+export async function runLaunchWorker(
+  launchAccount: DbAccount,
+  request: ResolvedLaunchRequest & { buildName?: string; buildId?: string; gameDir?: string; customVersionPath?: string },
+): Promise<LaunchResultPayload> {
+  return getLaunchOrchestrator().runLaunch(launchAccount, request)
+}

@@ -6,6 +6,7 @@
 export type McServerInfo = {
   id: string
   name: string
+  description?: string
   gameVersion: string
   modloader: string
   modloaderVersion?: string
@@ -24,6 +25,7 @@ export type McServerInfo = {
   source: "local" | "modrinth" | "curseforge"
   /** Категория/группа сервера в списке (как группы у сборок). */
   group?: string
+  remote?: { id: string; ownerName: string; permissions: import("./remote-server-types.js").ServerPermissions; online?: boolean }
 }
 
 export type McServerState =

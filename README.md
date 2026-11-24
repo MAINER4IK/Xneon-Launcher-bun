@@ -1,25 +1,18 @@
-<p align="center">
-  <a href="https://launcher.xneon.org" target="_blank">
-    <img alt="Xneon Launcher" width="120" src="https://launcher.xneon.org/icon.png">
-  </a>
-</p>
+<p align="center"><a href="https://launcher.xneon.org" target="_blank"><img alt="Xneon Launcher" width="120" src="https://launcher.xneon.org/icon.png"></a></p>
 
 <h1 align="center">Xneon Launcher</h1>
 
 <p align="center">
-  <a href="https://github.com/XneonTeam/Xneon-Launcher/releases/latest">
-    <img src="https://img.shields.io/github/v/release/XneonTeam/Xneon-Launcher?style=flat-square&color=f97316" alt="Version">
-  </a>
-  <a href="https://github.com/XneonTeam/Xneon-Launcher/blob/main/LICENSE">
-    <img src="https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square" alt="License">
-  </a>
-  <img src="https://img.shields.io/badge/Electron-43-47848F?style=flat-square&logo=electron" alt="Electron">
-  <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react" alt="React">
-  <img src="https://img.shields.io/badge/Vite-8-646CFF?style=flat-square&logo=vite" alt="Vite">
+  <a href="https://github.com/MAINER4IK/Xneon-Launcher-bun/releases/latest"><img height="45" src="./.github/badges/version.svg" alt="Version"></a>&nbsp;
+  <a href="https://github.com/MAINER4IK/Xneon-Launcher-bun/blob/main/LICENSE"><img height="45" src="./.github/badges/license.svg" alt="License"></a>&nbsp;
+  <img height="45" src="./.github/badges/runtime.svg" alt="Electrobun">
   <br>
-  <img src="https://img.shields.io/badge/Windows-0078D4?style=flat-square&logo=windows" alt="Windows">
-  <img src="https://img.shields.io/badge/macOS-000000?style=flat-square&logo=apple" alt="macOS">
-  <img src="https://img.shields.io/badge/Linux-FCC624?style=flat-square&logo=linux" alt="Linux">
+  <img height="45" src="./.github/badges/react.svg" alt="React">&nbsp;
+  <img height="45" src="./.github/badges/vite.svg" alt="Vite">
+  <br>
+  <img height="45" src="./.github/badges/windows.svg" alt="Windows">&nbsp;
+  <img height="45" src="./.github/badges/macos.svg" alt="macOS">&nbsp;
+  <img height="45" src="./.github/badges/linux.svg" alt="Linux">
 </p>
 
 <p align="center">
@@ -37,27 +30,45 @@
 - ⚡ **Быстрая игра** — быстрый переход в миры и недавние серверы с MOTD, онлайном, версией и пингом. Панель доступна на всех версиях, а Quick Play-параметры передаются только клиентам Java Edition 1.20+ (снапшоты от `23w14a`)
 - ⚙️ **Гибкий запуск** — Java, память, аргументы JVM, команды до и после запуска, wrapper, переменные окружения, поведение лаунчера после старта игры
 - 📊 **Статистика** — время в игре, сессии, аптайм серверов, графики активности и топы сборок
-- 📜 **Логи запуска** — уровни, поиск, копирование и разбор краша через AI
+- 📜 **Логи запуска** — уровни, поиск, копирование, публикация лога по ссылке (mclo.gs) и разбор краша через AI
+- 🎧 **Discord Rich Presence** — статус «В меню» или «Играет в сборку» с загрузчиком и временем сессии
 
 ### Контент
 - 📥 **Modrinth, CurseForge и FTB** — поиск, установка и обновление модов, ресурспаков, шейдеров и модпаков
-- 🗂 **Сборки** — изолированные профили со своими модами, мирами и настройками, категории, корзина, экспорт и импорт сборки в ZIP
+- 🗂 **Сборки** — изолированные профили со своими модами, мирами (с датапаками) и настройками, категории, корзина, экспорт и импорт сборки в ZIP
 - 🔄 **Автообновление контента** — бейджи обновлений, ченджлоги и обновление всего сразу
 - 🧩 **Зависимости** — установка обязательных модов, проверка совместимости с версией загрузчика, распознавание уже установленного по проекту
+- ☑️ **Массовые действия** — установка, включение, выключение и удаление нескольких дополнений сразу
+- ⭐ **Отзывы ModDex** — оценки, сортировка, полезность и ответы разработчиков для модов и модпаков Modrinth и CurseForge
 
 ### Серверы
 - 🎮 **Локальные серверы** — мастер создания (Vanilla, Forge, Fabric, Quilt, NeoForge, Paper, Spigot, Bukkit, Purpur, Folia, Sponge, BungeeCord, Velocity, Waterfall или свой JAR), автозагрузка Java и ядра, консоль, файловый менеджер, `server.properties`, игроки (whitelist, операторы, баны), группы, корзина и экспорт в ZIP
 - 🌐 **XN Connect** — сервер получает внешний адрес `connect.xneon.org`: друзья заходят без белого IP и настройки проброса портов
+- 🔌 **Контент сервера** — поиск и установка плагинов, модов и датапаков с проверкой совместимости, загрузка `.jar`, включение и выключение
+- 🖥 **Удалённое управление** — доступ по коду, пока компьютер владельца включён: запуск и остановка, консоль, файлы, `server.properties`, игроки и настройки запуска с отдельными правами
+- 🕘 **История сервера** — версии файлов и настроек, ветки и запросы на слияние с предпросмотром изменений
+
+### Совместная работа
+- 👥 **XNLC/Share** — публикация сборки, установка по коду приглашения и получение обновлений; роли создателя, редактора и читателя, код с ограничением срока и числа использований. Обновления приходят с предпросмотром, локальные дополнения сохраняются, конфликты разрешаются вручную
+- 🌿 **Ветки и история** — коммиты, ветки, теги и релизы, сохранённые изменения и возврат к версии с предпросмотром
+- 🔀 **Запросы на слияние** — сравнение веток, комментарии и слияние на сервере; настройки игры и загрузчика входят в историю сборки
+
+### Обновления
+- 🔁 **Stable и Beta** — выбор ветки обновлений в «О лаунчере», проверка, загрузка и установка из приложения; Stable устанавливает только более новую стабильную версию
+- 🛡 **Проверенные сборки** — обновления проверяются по подписи и контрольной сумме; после загрузки можно перезапуститься сразу или отложить установку до следующего запуска
+- 📦 **Portable** — portable-сборка обновляется вручную
 
 ### Аккаунты и оформление
 - 🔐 **Аккаунты** — Microsoft, Ely.by, XNSkins и оффлайн-режим, встроенный authlib-injector; аватары обновляются после смены скина
 - 🎨 **Скины** — библиотека и каталог Laby с поиском и фильтрами, избранное, плащи и 3D-превью; результаты сканирования сохраняются при переключении вкладок
 - ☁️ **Облако** — Google Drive, Dropbox, Яндекс.Диск, OneDrive, WebDAV и S3; просмотр и выборочная синхронизация сборок, серверов и аккаунтов, импорт и экспорт тем
-- 🤖 **AI-помощник** — отдельные чаты, вложения с контекстом лаунчера, инструменты для работы со сборками и серверами, план действий и подтверждение операций. Поддерживаются OpenAI-совместимые API, Anthropic Messages, Google Gemini и Ollama
+- 🤖 **AI-помощник** — отдельные чаты, вложения с контекстом лаунчера, инструменты для работы со сборками и серверами, поиск в интернете, чтение веб-страниц, подключение MCP-серверов, план действий и подтверждение операций. Поддерживаются OpenAI-совместимые API, Anthropic Messages, Google Gemini и Ollama
 - 💾 **Хранилище** — разбор занятого места по категориям, повторное использование результатов сканирования при возврате во вкладку и очистка мусора
-- 🌍 **Языки** — русский, английский, украинский, немецкий, испанский
-- 🖼 **Темы** — готовые и собственные палитры с настройкой всех цветов, фона, эффектов интерфейса и свечения; CSS-редактор, импорт и экспорт `.xntheme`, синхронизация через облако
+- 🌍 **Языки** — русский, английский, украинский, немецкий, испанский, польский
+- 🖼 **Темы** — готовые и собственные палитры с настройкой всех цветов, фона (картинка или видео), эффектов интерфейса и свечения; CSS-редактор, импорт и экспорт `.xntheme`, синхронизация через облако
+- 🖌 **Палитра из фона** — подбор цветов темы по картинке или видео одной кнопкой
 - ✨ **Анимации тем** — настройка появления содержимого или собственная CSS-анимация; панели и загруженные карточки появляются отдельно
+- 🎉 **Событийные темы** — темы LiveOps с отметкой «Событие» и автоприменением вместо встроенной темы; свои темы не меняются
 
 ## Скриншоты
 
@@ -107,21 +118,21 @@
 
 ## Быстрый старт
 
-Нужны **Node.js 22+** и **pnpm 11+** (проект — pnpm-воркспейс, локальные пакеты подключаются через `workspace:*`).
+Добавьте **Bun 1.4.4** и **Hutch 0.30.0** в PATH. Для стандартной Windows-сборки Electrobun нужны Windows PowerShell и 64-битный компилятор C# из .NET Framework 4.x; для дополнительного Windows-установщика — **NSIS 3** (`makensis` или `XNEON_MAKENSIS`). Приложение использует WebView2.
 
 ```bash
 # Установка зависимостей
-pnpm install
+bun install --frozen-lockfile
 
-# Запуск в режиме разработки (Vite + Electron)
-pnpm run dev
+# Сборка dev и запуск Electrobun
+bun run dev
 
 # Проверка типов
-pnpm run typecheck
+bun run typecheck
 
 # Production-сборка и упаковка в дистрибутив
-pnpm run build
-pnpm run package
+bun run build
+bun run package
 ```
 
 ## Импорт из других лаунчеров
@@ -155,13 +166,19 @@ Xneon автоматически обнаружит установленные �
 
 ## Разработка
 
+Актуальные команды, IPC, Workers, владение сессиями и тестовые entrypoints:
+[руководство по интеграции](docs/integration-guide.md).
+Поддержка платформ и команды native runners: [platform builds](docs/platform-builds.md).
+Измерительные сценарии и отчёты производительности хранятся локально, вне Git.
+Проверки и границы offline/live: [testing](docs/testing.md).
+
 Документация для разработчиков и авторов тем: [docs.xneon.org](https://docs.xneon.org).
 
 ### Архитектура
 
 - **Renderer** (`components/`, `src/`, `lib/`) — интерфейс на React 19 + Vite 8 + Tailwind 4
-- **Electron main** (`electron/main/`) — IPC-обработчики, база данных, запуск Minecraft в отдельном worker-процессе
-- **Пакеты** (`packages/`) — доменная логика, подключённая как pnpm-воркспейс:
+- **Backend** (`electrobun/main/`) — обработчики RPC, база данных, запуск Minecraft в отдельном worker-процессе
+- **Пакеты** (`packages/`) — доменная логика, подключённая как Bun-воркспейс:
   - `@xnlc/core` — движок запуска Minecraft и загрузчики
   - `@xnlc/mods` — клиенты Modrinth, CurseForge и FTB
   - `@xnlc/servers` — ядра серверов, установка и управление процессами
@@ -169,30 +186,47 @@ Xneon автоматически обнаружит установленные �
   - `@xnlc/agent` — AI-провайдеры, потоковые ответы, инструменты, контекст и чаты помощника
   - `@xnlc/nbt` — чтение и запись NBT (`level.dat`, `servers.dat`)
   - `@xnlc/types` — общие типы и IPC-контракты
+  - `@xnlc/urls` — общие адреса сервисов и настраиваемые источники Minecraft
+  - `@xnlc/archives` — общий потоковый ZIP слой
+  - `@xnlc/parser` — метаданные, требования загрузчиков и batch scan-worker
+  - `@xnlc/share` — манифесты, ветки, слияние и файловые транзакции Share
+- **Серверные приложения** (`infrastructure/`) — самостоятельные сервисы вне клиента, подробности в [infrastructure/README.md](infrastructure/README.md):
+  - `xnlc-share` — сервис общих сборок: Bun + SQLite локально, Cloudflare Worker с Durable Object и R2 в production
+  - `xnlc-liveops` — Go-сервис ивентовых тем, JSON-каталог и клиентский контроллер
 
 ### Команды
 
 ```bash
-pnpm run dev           # Vite + Electron с hot-reload
-pnpm run dev:fast      # то же, без пересборки main перед стартом
-pnpm run build         # typecheck + сборка renderer и main
-pnpm run package       # electron-builder → release/
-pnpm run typecheck     # tsc --noEmit
-pnpm run sync:xnlc     # собрать и перелинковать пакеты @xnlc/*
+bun run dev           # сборка интерфейса и воркеров, запуск через Electrobun
+bun run build         # typecheck + сборка renderer и main
+bun run package       # Stable → release-electrobun/stable/
+bun run typecheck     # renderer + main tsconfig
+bun run test:desktop  # desktop-тесты под Bun 1.4.4
+bun run test:offline  # воспроизводимый offline gate, без внешних сервисов
 ```
 
+После сборки Windows x64 можно проверить изоляцию каналов через
+`bun scripts/test-channel-artifacts.mjs`, а полный путь Windows-обновления —
+подпись, скачивание, SHA-256, staging и отложенный запуск — локальным
+харнессом `bun scripts/test-windows-update.ts` (без публикации релиза и сети).
+
 Переменные окружения: `XNLC_NEWS_URL` — адрес ленты новостей лаунчера (по умолчанию
-`https://launcher.xneon.org/news.json`), `ELECTRON_DEBUG_PORT` — порт
-remote-debugging для `scripts/launch-electron-dev.mjs` (по умолчанию не открывается).
+`https://launcher.xneon.org/news.json`).
+
+`XNLC_LIVEOPS_URL` подключает сервис событийных тем (HTTPS origin, HTTP только
+для localhost). Без переменной сеть LiveOps выключена. Ивент показывается рядом
+с готовыми темами, не попадает в «Мои темы» и по окончании возвращает прежнюю тему.
+Подключение и локальный запуск — [infrastructure/README.md](infrastructure/README.md#liveops-в-лаунчере).
 
 ### Структура
 
 ```
 components/launcher/   # UI-компоненты (страницы, модалки, настройки)
-electron/main/         # Electron main: IPC, БД, сборки, серверы, облако
-electron/preload.ts    # Preload-скрипт (IPC-мост)
+electrobun/main/         # Backend Electrobun: RPC, БД, сборки, серверы, облако
+electrobun/preload.ts    # API интерфейса поверх Electrobun RPC
 lib/                   # Общие утилиты renderer (кэш, форматирование, ссылки)
 packages/              # Локальные пакеты @xnlc/*
+infrastructure/        # Серверные приложения: xnlc-share, xnlc-liveops
 src/                   # Точка входа renderer, i18n, контексты, хуки
 public/                # Статические файлы и иконки лаунчеров
 docs/screenshots/      # Скриншоты для README и релизов
@@ -206,7 +240,11 @@ docs/screenshots/      # Скриншоты для README и релизов
 | macOS | `~/Library/Application Support/xneonlauncher` |
 | Linux | `~/.xneonlauncher` |
 
-Внутри: `data.db` (SQLite, better-sqlite3), `cache/` (каталог Laby, каталог FTB), `intents/<сборка>/` — изолированный `.minecraft` каждой сборки, `mc-servers/<id>/` — локальные серверы, `skins/` — сохранённые скины.
+SQLite (`data.db`, драйвер `bun:sqlite`) хранит аккаунты и их данные авторизации, настройки (включая ИИ, MCP и метаданные тем), записи сборок, серверов, скинов, статистику, облачные конфигурации и историю чатов. Файлы остаются в исходных каталогах профиля: `themes/`, `theme-media/`, `minecraft/`, `intents/` (сборки, моды, миры и скриншоты), `mc-servers/`, `skins/` и `cache/`. Явные пути сборок и внешних ресурсов сохраняются.
+
+Перед первым открытием существующей базы для записи и при переходе между версиями схемы лаунчер проверяет файл и создаёт согласованный снимок `data.db.electrobun-v<исходная>-to-v<целевая>.bak`. Снимок включает подтверждённые записи из WAL и проверяется перед применением транзакции миграции. При ошибке проверки лаунчер показывает путь к базе и причину ошибки на экране запуска.
+
+Для локальной разработки `XNEON_BUN_DATA_DIR` явно задаёт корень тестового профиля. Относительный путь разрешается от рабочего каталога, а тестовый `data-location.json` хранится в указанном корне. Укажите отдельную папку с тестовыми данными. Автоматического импорта из тестового профиля в основной нет.
 
 ## Лицензия
 
@@ -218,6 +256,6 @@ docs/screenshots/      # Скриншоты для README и релизов
 - [X Minecraft Launcher](https://xmcl.app) — за отличный пример Electron-лаунчера
 - [Modrinth](https://modrinth.com), [CurseForge](https://curseforge.com) и [FTB](https://api.modpacks.ch) — за API для модов и модпаков
 - [skinview3d](https://github.com/bs-community/skinview3d) и [three.js](https://threejs.org) — за 3D-превью скинов
-- [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) — за быструю работу с базой данных
+- [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) — для тестовых баз прежнего формата
 - [shadcn/ui](https://ui.shadcn.com) — за компоненты интерфейса
 - [Tabler Icons](https://tabler-icons.io) — за иконки

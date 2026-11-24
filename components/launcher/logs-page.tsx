@@ -1,4 +1,5 @@
 import { CONTENT_ENTER_DELAYED } from "./content-motion"
+import { SERVICE_URLS } from "@xnlc/urls"
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
 import { useLaunchLogs, type LogEntry, type LogLevel } from "@/src/LaunchLogsContext"
@@ -414,7 +415,7 @@ export function LogsPage({ focus }: { focus?: { crash: boolean; at: number } | n
     setShareState("loading")
     try {
       const text = filtered.map(e => e.text).join("\n")
-      const res = await fetch("https://api.mclo.gs/1/log", {
+      const res = await fetch(SERVICE_URLS.logUpload, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ content: text }),
@@ -511,7 +512,7 @@ export function LogsPage({ focus }: { focus?: { crash: boolean; at: number } | n
 
       {/* Log area */}
       <div data-ui="logs-page-div-12" data-slot="logs-output" ref={containerRef} onScroll={handleScroll}
-        className={`flex-1 min-h-0 overflow-y-auto bg-background font-mono text-[12px] leading-5 rounded-2xl border border-border ${CONTENT_ENTER_DELAYED}`}>
+        className={`flex-1 min-h-0 overflow-y-auto bg-card font-mono text-[12px] leading-5 rounded-2xl border border-border ${CONTENT_ENTER_DELAYED}`}>
         {filtered.length === 0 ? (
           <div data-ui="logs-page-div-13" className="h-full flex flex-col items-center justify-center text-center text-muted-foreground">
             <IconFileText className="w-10 h-10 mb-3 opacity-30" /><p data-ui="logs-page-p-2" className="text-sm">{t("logs.empty")}</p>

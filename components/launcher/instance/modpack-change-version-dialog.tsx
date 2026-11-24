@@ -1,3 +1,4 @@
+import { IconX as LauncherCancelIcon } from "@tabler/icons-react"
 import { ImportProgressPanel } from "./import-progress-panel"
 import { mergeImportProgress } from "./import-progress-model"
 import { useEffect, useMemo, useState } from "react"
@@ -62,9 +63,9 @@ export function ModpackChangeVersionDialog({
       try {
         let list: ModVersion[] = []
         if (build.source === "modrinth" && build.projectSlug) {
-          list = (await window.electronAPI?.modsModrinthVersions(build.projectSlug)) ?? []
+          list = (await window.electrobunAPI?.modsModrinthVersions(build.projectSlug)) ?? []
         } else if (build.source === "curseforge" && build.modId) {
-          const details = await window.electronAPI?.modsCurseforgeDetails(build.modId)
+          const details = await window.electrobunAPI?.modsCurseforgeDetails(build.modId)
           list = details?.versions ?? []
         }
         if (!active) return
@@ -89,7 +90,7 @@ export function ModpackChangeVersionDialog({
       setImportProgress(null)
       return
     }
-    const off = window.electronAPI?.onImportProgress?.((progress) => {
+    const off = window.electrobunAPI?.onImportProgress?.((progress) => {
       setImportProgress(previous => mergeImportProgress(previous, progress))
     })
     return () => {
@@ -123,7 +124,7 @@ export function ModpackChangeVersionDialog({
 
     try {
       if (build.source === "modrinth" && build.projectSlug) {
-        const res = await window.electronAPI?.importModrinthModpack(
+        const res = await window.electrobunAPI?.importModrinthModpack(
           build.name,
           build.projectSlug,
           selectedVersion.id,
@@ -144,7 +145,7 @@ export function ModpackChangeVersionDialog({
         })
       } else if (build.source === "curseforge" && build.modId) {
         const fileId = Number(selectedVersion.id)
-        const res = await window.electronAPI?.importCurseforgeModpack(
+        const res = await window.electrobunAPI?.importCurseforgeModpack(
           build.name,
           build.modId,
           fileId,
@@ -215,7 +216,7 @@ export function ModpackChangeVersionDialog({
 
         <div data-ui="instance-modpack-change-version-dialog-div-6" data-component="modpack-change-version-dialog" className="flex-1 overflow-y-auto p-4 space-y-2 min-h-[260px]">
           {loading && (
-            <div data-ui="instance-modpack-change-version-dialog-div-7" className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
+            <div data-ui="instance-modpack-change-version-dialog-div-7" className="flex min-h-full flex-col items-center justify-center gap-3 text-muted-foreground">
               <IconLoader2 className="w-7 h-7 animate-spin text-primary" />
               <span data-ui="instance-modpack-change-version-dialog-span-1" className="text-sm">{t("modpackVersion.loadingVersions")}</span>
             </div>
@@ -319,9 +320,9 @@ export function ModpackChangeVersionDialog({
             type="button"
             onClick={onClose}
             disabled={applying}
-            className="px-4 py-2 rounded-xl text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            className="px-4 py-2 rounded-xl border border-border bg-muted text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
           >
-            {t("common.cancel")}
+            {<span className="inline-flex items-center justify-center gap-2"><LauncherCancelIcon className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />{t("common.cancel")}</span>}
           </button>
 
           <button data-ui="instance-modpack-change-version-dialog-button-3"

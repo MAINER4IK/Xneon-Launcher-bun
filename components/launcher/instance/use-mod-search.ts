@@ -10,33 +10,23 @@ import type { ProjectKind } from "@/lib/project-links"
 
 export type SelectedModCategory = { name: string; source?: "modrinth" | "curseforge" }
 
-function isProjectInstalled(
-  project: ModSearchResult,
-  installedItems: Build["mods"],
-): boolean {
-  const projectProjectId = project.projectId ?? (project.source === "modrinth" ? project.id : undefined)
-  const normalizedProjectSlug = normalizeContentIdentity(project.slug)
-  const normalizedProjectName = normalizeContentIdentity(project.name)
+const EMPTY_CONTENT: Build["mods"] = []
+const installedIndexes = new WeakMap<Build["mods"], { projects: Set<string>; mods: Set<number>; names: Set<string> }>()
 
-  return installedItems.some(item => {
-    if (projectProjectId && item.projectId && projectProjectId === item.projectId) return true
-    if (project.source === "curseforge" && typeof project.modId === "number" && item.modId === project.modId) return true
-
-    // Проверка по slug и нормализованному имени:
-    // если мод только что скачан или загружен локально/через другую площадку,
-    // projectId может ещё не успеть сопоставиться, но мод уже находится в сборке.
-    const itemSlug = normalizeContentIdentity(item.slug)
-    const itemName = normalizeContentIdentity(item.name)
-
-    if (normalizedProjectSlug && (itemSlug === normalizedProjectSlug || itemName === normalizedProjectSlug)) {
-      return true
+function getInstalledIndex(items: Build["mods"]) {
+  const cached = installedIndexes.get(items)
+  if (cached) return cached
+  const index = { projects: new Set<string>(), mods: new Set<number>(), names: new Set<string>() }
+  for (const item of items) {
+    if (item.projectId) index.projects.add(item.projectId)
+    if (typeof item.modId === "number") index.mods.add(item.modId)
+    for (const value of [item.slug, item.name]) {
+      const name = normalizeContentIdentity(value)
+      if (name) index.names.add(name)
     }
-    if (normalizedProjectName && (itemSlug === normalizedProjectName || itemName === normalizedProjectName)) {
-      return true
-    }
-
-    return false
-  })
+  }
+  installedIndexes.set(items, index)
+  return index
 }
 
 /** Сквозная сортировка объединённых результатов обеих платформ по выбранному виду */
@@ -63,6 +53,7 @@ function mergeSortedResults(a: ModSearchResult[], b: ModSearchResult[], sortBy: 
 }
 
 export function useModSearch(activeBuild: Build | null, detailTab: DetailTab, view: string, activeBuildId: string | null) {
+  const catalogVisible = view === "detail" && Boolean(activeBuildId) && ["mods", "resourcepacks", "shaders"].includes(detailTab)
   const [modSearch, setModSearch] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [modLoading, setModLoading] = useState(false)
@@ -147,7 +138,7 @@ export function useModSearch(activeBuild: Build | null, detailTab: DetailTab, vi
     const key = `modrinth:search:${type}:${query ?? ""}:${version ?? ""}:${loader ?? ""}:${sort}:${page}:${(cats ?? []).join(",")}`
     return dataCache.getOrFetch(
       key,
-      () => window.electronAPI?.modsModrinthSearch(query, type, version, loader, sort, page, cats) ?? null,
+      () => window.electrobunAPI?.modsModrinthSearch(query, type, version, loader, sort, page, cats) ?? null,
       { ttl: MOD_SEARCH_CACHE_TTL, persist: true },
     )
   }, [])
@@ -160,17 +151,22 @@ export function useModSearch(activeBuild: Build | null, detailTab: DetailTab, vi
     const key = `curseforge:search:${type}:${query ?? ""}:${version ?? ""}:${loader ?? ""}:${sort}:${page}:${(cats ?? []).join(",")}`
     return dataCache.getOrFetch(
       key,
-      () => window.electronAPI?.modsCurseforgeSearch(query, type, version, loader, sort, page, cats) ?? null,
+      () => window.electrobunAPI?.modsCurseforgeSearch(query, type, version, loader, sort, page, cats) ?? null,
       { ttl: MOD_SEARCH_CACHE_TTL, persist: true },
     )
   }, [])
 
+  const items = (detailTab === "mods" ? activeBuild?.mods
+    : detailTab === "resourcepacks" ? activeBuild?.resourcepacks
+    : detailTab === "shaders" ? activeBuild?.shaders : undefined) ?? EMPTY_CONTENT
   const isInstalledFn = useCallback((project: ModSearchResult): boolean => {
-    const items = detailTab === "mods"
-      ? activeBuild?.mods ?? []
-      : detailTab === "resourcepacks" ? activeBuild?.resourcepacks ?? [] : activeBuild?.shaders ?? []
-    return isProjectInstalled(project, items)
-  }, [activeBuild, detailTab])
+    const index = getInstalledIndex(items)
+    const projectId = project.projectId ?? (project.source === "modrinth" ? project.id : undefined)
+    return (!!projectId && index.projects.has(projectId))
+      || (project.source === "curseforge" && typeof project.modId === "number" && index.mods.has(project.modId))
+      || index.names.has(normalizeContentIdentity(project.slug))
+      || index.names.has(normalizeContentIdentity(project.name))
+  }, [items])
 
   const modTotalPages = useMemo(() => {
     if (modTotalHits === 0) return 1
@@ -259,7 +255,13 @@ export function useModSearch(activeBuild: Build | null, detailTab: DetailTab, vi
   const lastRequestKeyRef = useRef("")
 
   useEffect(() => {
-    if (view !== "detail" || !activeBuildId) return
+    if (!catalogVisible) {
+      // Общая страница/миры/скриншоты не показывают каталог. Поздний ответ
+      // прежнего поиска не должен обновить их скрытое состояние.
+      ++searchVersionRef.current
+      lastRequestKeyRef.current = ""
+      return
+    }
     const catsKey = modCategories.map(c => `${c.source ?? "both"}:${c.name}`).join(",")
     const searchKey = `${debouncedSearch}|${modSource}|${modSortBy}|${catsKey}|${detailTab}|${activeBuildId}`
     const changed = lastSearchKeyRef.current !== searchKey
@@ -279,39 +281,41 @@ export function useModSearch(activeBuild: Build | null, detailTab: DetailTab, vi
     if (lastRequestKeyRef.current === requestKey) return
     lastRequestKeyRef.current = requestKey
     void refreshPage(targetPage)
-  }, [debouncedSearch, modSource, modSortBy, modCategories, detailTab, view, activeBuildId, modPage, refreshPage])
+  }, [debouncedSearch, modSource, modSortBy, modCategories, detailTab, view, activeBuildId, modPage, refreshPage, catalogVisible])
 
   useEffect(() => {
-    if (view !== "detail") return
+    if (!catalogVisible) return
+    let cancelled = false
     setCategories([])
     const loadCategories = async () => {
       try {
         if (modSource === "both") {
           const [mrCats, cfCats] = await Promise.all([
-            window.electronAPI?.modsModrinthCategories(),
-            window.electronAPI?.modsCurseforgeCategories(),
+            window.electrobunAPI?.modsModrinthCategories(),
+            window.electrobunAPI?.modsCurseforgeCategories(),
           ])
           const merged = [
             ...(mrCats ?? []).map(c => ({ ...c, source: "modrinth" as const })),
             ...(cfCats ?? []).map(c => ({ ...c, source: "curseforge" as const })),
           ]
-          if (merged.length > 0) setCategories(merged as ModCategory[])
+          if (!cancelled && merged.length > 0) setCategories(merged as ModCategory[])
         } else if (modSource === "curseforge") {
-          const cats = await window.electronAPI?.modsCurseforgeCategories()
-          if (cats) setCategories(cats.map(c => ({ ...c, source: "curseforge" as const })) as ModCategory[])
+          const cats = await window.electrobunAPI?.modsCurseforgeCategories()
+          if (!cancelled && cats) setCategories(cats.map(c => ({ ...c, source: "curseforge" as const })) as ModCategory[])
         } else {
-          const cats = await window.electronAPI?.modsModrinthCategories()
-          if (cats) setCategories(cats.map(c => ({ ...c, source: "modrinth" as const })) as ModCategory[])
+          const cats = await window.electrobunAPI?.modsModrinthCategories()
+          if (!cancelled && cats) setCategories(cats.map(c => ({ ...c, source: "modrinth" as const })) as ModCategory[])
         }
       } catch {}
     }
     loadCategories()
-  }, [view, modSource, detailTab])
+    return () => { cancelled = true }
+  }, [catalogVisible, modSource])
 
   const [detailsKind, setDetailsKind] = useState<ProjectKind>("mod")
   const openProjectModal = useCallback(async (item: ModSearchResult, kind: ProjectKind = "mod") => {
     setDetailsKind(kind)
-    setModalTab("changelog"); setLoadingModal(true)
+    setModalTab("description"); setLoadingModal(true)
     setSelectedDetails({
       id: item.id, slug: item.slug, name: item.name, summary: item.summary,
       description: item.summary, iconUrl: item.iconUrl, downloadCount: item.downloadCount,
@@ -321,17 +325,17 @@ export function useModSearch(activeBuild: Build | null, detailTab: DetailTab, vi
     try {
       if (item.source === "modrinth") {
         const [details, versions] = await Promise.all([
-          dataCache.getOrFetch(`modrinth:details:${item.slug}`, () => window.electronAPI?.modsModrinthDetails(item.slug) ?? null, { immutable: true }),
-          dataCache.getOrFetch(`modrinth:versions:${item.slug}`, () => window.electronAPI?.modsModrinthVersions(item.slug) ?? null, { immutable: true }),
+          dataCache.getOrFetch(`modrinth:details:${item.slug}`, () => window.electrobunAPI?.modsModrinthDetails(item.slug) ?? null, { immutable: true }),
+          dataCache.getOrFetch(`modrinth:versions:${item.slug}`, () => window.electrobunAPI?.modsModrinthVersions(item.slug) ?? null, { immutable: true }),
         ])
         if (details) setSelectedDetails(details)
         setProjectVersions(versions ?? [])
       } else if (item.source === "curseforge" && item.modId != null) {
-        const details = await dataCache.getOrFetch(`curseforge:details:${item.modId}`, () => window.electronAPI?.modsCurseforgeDetails(item.modId!) ?? null, { immutable: true })
+        const details = await dataCache.getOrFetch(`curseforge:details:${item.modId}`, () => window.electrobunAPI?.modsCurseforgeDetails(item.modId!) ?? null, { immutable: true })
         if (details) setSelectedDetails(details)
         setProjectVersions(details?.versions ?? [])
       } else if (item.source === "ftb" && item.projectId != null) {
-        const details = await dataCache.getOrFetch(`ftb:details:${item.projectId}`, () => window.electronAPI?.modsFtbDetails(Number(item.projectId)) ?? null, { immutable: true })
+        const details = await dataCache.getOrFetch(`ftb:details:${item.projectId}`, () => window.electrobunAPI?.modsFtbDetails(Number(item.projectId)) ?? null, { immutable: true })
         if (details) setSelectedDetails(details)
         setProjectVersions(details?.versions ?? [])
       }

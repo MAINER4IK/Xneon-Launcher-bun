@@ -4,13 +4,13 @@
 // Author: MAINER4IK
 // ============================================================
 
-import { spawn } from "child_process";
+import { spawn, spawnSync } from "child_process";
+import { encodeJavaArgFile } from "./java-encoding.js";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { pathToFileURL } from "node:url";
-import { StringDecoder } from "node:string_decoder";
-import AdmZip from "adm-zip/adm-zip.js";
+import { packArchiveSync } from "@xnlc/archives";
 import { LaunchResult } from "../types/index.js";
 import { getLogsDir, cleanEnvForGame } from "../utils/index.js";
 
@@ -69,6 +69,15 @@ function quoteArgForArgFile(arg: string): string {
 export const WINDOWS_COMMAND_LIMIT = 30_000;
 export const OTHER_PLATFORM_COMMAND_LIMIT = 120_000;
 
+export function protectJavaOptionsEnvironment(env: Record<string, string>, javaMajorVersion: number, platform: NodeJS.Platform): void {
+  if (javaMajorVersion < 17) return;
+  for (const key of Object.keys(env)) {
+    if ((platform === "win32" ? key.toUpperCase() : key) === "_JAVA_OPTIONS") {
+      env[key] = `${env[key]} -XX:+UnlockDiagnosticVMOptions -XX:-UseBASE64Intrinsics`;
+    }
+  }
+}
+
 /**
  * Если команда длиннее лимита платформы, аргументы java выносятся во временный
  * `@argfile` (JVM читает его сама — так делают Forge и NeoForge). Возвращает
@@ -76,12 +85,13 @@ export const OTHER_PLATFORM_COMMAND_LIMIT = 120_000;
  * процесса. Вынесено из `launch` отдельной функцией, чтобы это можно было
  * проверить тестом без запуска java.
  */
-export function writeJavaArgFileIfTooLong(
+export async function writeJavaArgFileIfTooLong(
   javaArgs: string[],
   totalLength: number,
   limit: number,
   javaMajorVersion = 9,
-): { args: string[]; cleanupPath: string | null } {
+  javaPath?: string,
+): Promise<{ args: string[]; cleanupPath: string | null }> {
   if (javaArgs.length === 0 || totalLength <= limit) {
     return { args: javaArgs, cleanupPath: null };
   }
@@ -89,12 +99,13 @@ export function writeJavaArgFileIfTooLong(
   // сохраняет длинные пути, порядок библиотек и поддержку пробелов/кириллицы.
   if (javaMajorVersion < 9) {
     const cpIndex = javaArgs.findIndex(arg => arg === "-cp" || arg === "-classpath");
-    if (cpIndex < 0 || !javaArgs[cpIndex + 1]) throw new Error("Java 8 command line is too long and has no classpath to compact");
+    if (cpIndex < 0 || !javaArgs[cpIndex + 1]) throw new Error("Command line is too long and has no classpath to compact");
     const classpath = javaArgs[cpIndex + 1];
-    const urls = classpath.split(path.delimiter).map(file => {
+    const urls = await Promise.all(classpath.split(path.delimiter).map(async file => {
       const url = pathToFileURL(path.resolve(file)).href;
-      return fs.existsSync(file) && fs.statSync(file).isDirectory() ? `${url}/` : url;
-    });
+      const directory = await fs.promises.stat(file).then(stat => stat.isDirectory(), () => false);
+      return directory ? `${url}/` : url;
+    }));
     const manifestLine = `Class-Path: ${urls.join(" ")}`;
     const lines: string[] = [];
     let remaining = manifestLine;
@@ -106,24 +117,38 @@ export function writeJavaArgFileIfTooLong(
     const file = path.join(os.tmpdir(), `xnlc-classpath-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jar`);
     const compacted = [...javaArgs];
     compacted[cpIndex + 1] = file;
-    if (totalLength - classpath.length + file.length > limit) throw new Error("Java 8 command line is too long even with a compact classpath");
-    const zip = new AdmZip();
-    zip.addFile("META-INF/MANIFEST.MF", Buffer.from(`Manifest-Version: 1.0\r\n${lines.join("\r\n")}\r\n\r\n`, "utf8"));
-    zip.writeZip(file);
+    if (totalLength - classpath.length + file.length > limit) throw new Error("Command line is too long even with a compact classpath");
+    // Манифест — единственная запись, поэтому синхронная упаковка в память
+    // дешевле запуска воркера: JAR нужен до старта Java.
+    await fs.promises.writeFile(
+      file,
+      packArchiveSync({ "META-INF/MANIFEST.MF": Buffer.from(`Manifest-Version: 1.0\r\n${lines.join("\r\n")}\r\n\r\n`, "utf8") }),
+    );
     return { args: compacted, cleanupPath: file };
   }
   try {
     const argFile = path.join(os.tmpdir(), `xnlc-java-args-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.txt`);
-    fs.writeFileSync(argFile, javaArgs.map(quoteArgForArgFile).join("\n"), "utf-8");
+    const content = javaArgs.map(quoteArgForArgFile).join("\n");
+    let encoding = "utf8";
+    if (process.platform === "win32" && /[^\x00-\x7f]/.test(content)) {
+      if (!javaPath) throw new Error("Java path is required to determine argument file encoding");
+      const result = spawnSync(javaPath, ["-XshowSettings:properties", "-version"], { encoding: "utf8", timeout: 10000, windowsHide: true });
+      const nativeEncoding = (result.stderr ?? "").match(/^\s*native\.encoding\s*=\s*(\S+)/m)?.[1];
+      if (result.error || result.status !== 0 || !nativeEncoding) {
+        throw new Error("Cannot determine Java native encoding for argument file");
+      }
+      encoding = nativeEncoding;
+    }
+    const bytes = await encodeJavaArgFile(content, encoding);
+    await fs.promises.writeFile(argFile, bytes);
     return { args: [`@${argFile}`], cleanupPath: argFile };
   } catch (error) {
     // Не смогли записать файл — пробуем запустить как есть.
-    console.warn(`[LaunchBuilder] Не удалось создать @argfile: ${error}`);
-    return { args: javaArgs, cleanupPath: null };
+    throw new Error(`Failed to prepare Java argument file: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
-function resolveSpawnTarget(program: string, args: string[], javaMajorVersion = 9): { cmd: string; args: string[]; shell?: boolean; cleanupPath?: string } {
+async function resolveSpawnTarget(program: string, args: string[], javaMajorVersion = 9): Promise<{ cmd: string; args: string[]; shell?: boolean; cleanupPath?: string }> {
   if (!isBatchFile(program)) {
     return { cmd: program, args };
   }
@@ -137,7 +162,7 @@ function resolveSpawnTarget(program: string, args: string[], javaMajorVersion = 
   if (inner.length > 6000) {
     const [javaPath, ...javaArgs] = args;
     if (javaPath) {
-      const prepared = writeJavaArgFileIfTooLong(javaArgs, inner.length, 6000, javaMajorVersion);
+      const prepared = await writeJavaArgFileIfTooLong(javaArgs, inner.length, 6000, javaMajorVersion, program);
       return { cmd: program, args: [javaPath, ...prepared.args], shell: true, cleanupPath: prepared.cleanupPath ?? undefined };
     }
   }
@@ -155,16 +180,17 @@ export class JavaRunner {
     this.pipeOutputToConsole = enabled;
   }
 
-  launch(
+  async launch(
     fullCommand: string[],
     gameDir: string,
     options?: {
       env?: Record<string, string>;
       wrapperCommand?: string;
       javaMajorVersion?: number;
+      java8PerformancePack?: boolean;
       cwd?: string;
     },
-  ): LaunchResult {
+  ): Promise<LaunchResult> {
     const javaPath = fullCommand[0];
     const allArgs = fullCommand.slice(1);
     const wrapperCommand = options?.wrapperCommand?.trim();
@@ -207,6 +233,10 @@ export class JavaRunner {
       APPDATA: process.env.APPDATA ?? gameDir,
     };
 
+    // _JAVA_OPTIONS читается JVM после командной строки и может включить intrinsic обратно.
+    // Явные переменные сборки сохраняем, но защитный флаг должен оставаться последним.
+    protectJavaOptionsEnvironment(env, options?.java8PerformancePack ? 17 : options?.javaMajorVersion ?? 0, platform);
+
     if (platform === "linux") {
       env.XDG_SESSION_TYPE = process.env.XDG_SESSION_TYPE ?? "x11";
       env.GLFW_PLATFORM = process.env.GLFW_PLATFORM ?? "x11";
@@ -239,7 +269,7 @@ export class JavaRunner {
     let argFileCleanup: string | null = null;
     let spawnArgs = programArgs;
     if (!wrapperCommand) {
-      const prepared = writeJavaArgFileIfTooLong(programArgs, commandParts.join(" ").length, commandLimit, options?.javaMajorVersion);
+      const prepared = await writeJavaArgFileIfTooLong(programArgs, commandParts.join(" ").length, commandLimit, options?.javaMajorVersion, javaPath);
       spawnArgs = prepared.args;
       argFileCleanup = prepared.cleanupPath;
       if (argFileCleanup) {
@@ -247,7 +277,7 @@ export class JavaRunner {
       }
     }
 
-    const target = resolveSpawnTarget(program, spawnArgs, options?.javaMajorVersion);
+    const target = await resolveSpawnTarget(program, spawnArgs, options?.javaMajorVersion);
     const cleanupPath = target.cleanupPath ?? argFileCleanup;
     const child = spawn(target.cmd, target.args, {
       cwd: options?.cwd ?? gameDir,
@@ -269,11 +299,12 @@ export class JavaRunner {
     const logFile = path.join(logsDir, "xnlc-launch.log");
     const logStream = fs.createWriteStream(logFile, { flags: "w" });
 
-    const stdoutDecoder = new StringDecoder("utf8");
-    const stderrDecoder = new StringDecoder("utf8");
+    // StringDecoder сохранял BOM в логах; ignoreBOM:true сохраняет ту же семантику.
+    const stdoutDecoder = new TextDecoder("utf-8", { ignoreBOM: true });
+    const stderrDecoder = new TextDecoder("utf-8", { ignoreBOM: true });
 
     child.stdout?.on("data", (data: Buffer) => {
-      const text = stdoutDecoder.write(data);
+      const text = stdoutDecoder.decode(data, { stream: true });
       if (this.pipeOutputToConsole) {
         process.stdout.write(text);
       }
@@ -281,7 +312,7 @@ export class JavaRunner {
     });
 
     child.stderr?.on("data", (data: Buffer) => {
-      const text = stderrDecoder.write(data);
+      const text = stderrDecoder.decode(data, { stream: true });
       if (this.pipeOutputToConsole) {
         process.stderr.write(text);
       }
@@ -290,8 +321,8 @@ export class JavaRunner {
 
     child.on("close", (code) => {
       this.currentProcess = null;
-      const stdoutTail = stdoutDecoder.end();
-      const stderrTail = stderrDecoder.end();
+      const stdoutTail = stdoutDecoder.decode();
+      const stderrTail = stderrDecoder.decode();
       if (this.pipeOutputToConsole) {
         process.stdout.write(stdoutTail);
         process.stderr.write(stderrTail);

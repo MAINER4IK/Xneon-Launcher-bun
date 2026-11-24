@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next"
+import { preloadPage } from "./page-loaders"
 import { cn } from "@/lib/utils"
 import {
   IconHome,
@@ -44,6 +45,11 @@ const sidebarItems: SidebarItem[] = [
     icon: <IconServer className="w-6 h-6 flex-shrink-0" strokeWidth={1.75} />,
   },
   {
+    id: "logs",
+    labelKey: "sidebar.logs",
+    icon: <IconFileText className="w-6 h-6 flex-shrink-0" strokeWidth={1.75} />,
+  },
+  {
     id: "accounts",
     labelKey: "sidebar.accounts",
     icon: <IconUserCircle className="w-6 h-6 flex-shrink-0" strokeWidth={1.75} />,
@@ -59,19 +65,14 @@ const sidebarItems: SidebarItem[] = [
     icon: <IconRobot className="w-6 h-6 flex-shrink-0" strokeWidth={1.75} />,
   },
   {
-    id: "logs",
-    labelKey: "sidebar.logs",
-    icon: <IconFileText className="w-6 h-6 flex-shrink-0" strokeWidth={1.75} />,
+    id: "cloud",
+    labelKey: "sidebar.cloud",
+    icon: <IconCloud className="w-6 h-6 flex-shrink-0" strokeWidth={1.75} />,
   },
   {
     id: "stats",
     labelKey: "sidebar.stats",
     icon: <IconChartBar className="w-6 h-6 flex-shrink-0" strokeWidth={1.75} />,
-  },
-  {
-    id: "cloud",
-    labelKey: "sidebar.cloud",
-    icon: <IconCloud className="w-6 h-6 flex-shrink-0" strokeWidth={1.75} />,
   },
   {
     id: "settings",
@@ -93,6 +94,8 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
         aria-label={t(item.labelKey)}
         data-active={activeTab === item.id}
         onClick={() => onTabChange(item.id)}
+        onPointerEnter={() => { void preloadPage(item.id) }}
+        onFocus={() => { void preloadPage(item.id) }}
         className={cn(
           "sidebar-item-btn relative rounded-xl flex items-center transition-all duration-300 justify-center mx-auto w-12 h-12",
           "hover:bg-sidebar-accent/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",

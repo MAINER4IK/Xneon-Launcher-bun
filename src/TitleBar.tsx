@@ -22,6 +22,7 @@ function formatRelativeTime(timestamp: number, locale: string, justNow: string):
 function formatSourceLabel(source: ActivityNotification["source"], t: (key: string) => string): string {
   if (source === "launch") return t("activity.source.launch")
   if (source === "install") return t("activity.source.install")
+  if (source === "share") return t("share.title")
   return t("activity.source.import")
 }
 
@@ -171,7 +172,10 @@ export function TitleBar() {
                                 </div>
                                 <div data-ui="title-bar-div-19" className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
                                   <span data-ui="title-bar-span-5">{formatSourceLabel(notification.source, t)}</span>
-                                  <span data-ui="title-bar-span-6">{notification.progress}%</span>
+                                  <div className="flex items-center gap-2">
+                                    <span data-ui="title-bar-span-6">{notification.progress}%</span>
+                                    {notification.downloadId && <button type="button" onClick={() => void window.electrobunAPI?.cancelContentDownload(notification.downloadId!)} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/50 px-2.5 py-1.5 text-xs text-foreground hover:bg-muted"><IconX className="h-3.5 w-3.5 text-primary" />{t("common.cancel")}</button>}
+                                  </div>
                                 </div>
                               </div>
                             ) : notification.busy ? (
@@ -179,8 +183,9 @@ export function TitleBar() {
                               // ещё нет, но полоса должна показывать, что процесс идёт.
                               <div data-ui="title-bar-div-20" className="mt-3">
                                 <div data-ui="title-bar-div-21" className="progress-indeterminate h-1.5 rounded-full bg-muted" />
-                                <div data-ui="title-bar-div-22" className="mt-1 text-[11px] text-muted-foreground">
-                                  {formatSourceLabel(notification.source, t)}
+                                <div data-ui="title-bar-div-22" className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                                  <span>{formatSourceLabel(notification.source, t)}</span>
+                                  {notification.downloadId && <button type="button" onClick={() => void window.electrobunAPI?.cancelContentDownload(notification.downloadId!)} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/50 px-2.5 py-1.5 text-xs text-foreground hover:bg-muted"><IconX className="h-3.5 w-3.5 text-primary" />{t("common.cancel")}</button>}
                                 </div>
                               </div>
                             ) : null}
@@ -197,7 +202,7 @@ export function TitleBar() {
 
         <button data-ui="title-bar-button-2"
           type="button"
-          onClick={() => window.electronAPI?.minimize()}
+          onClick={() => window.electrobunAPI?.minimize()}
           className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
         >
           <svg data-ui="title-bar-svg-2" data-icon="title-bar-svg-2" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -206,7 +211,7 @@ export function TitleBar() {
         </button>
         <button data-ui="title-bar-button-3"
           type="button"
-          onClick={() => window.electronAPI?.maximize()}
+          onClick={() => window.electrobunAPI?.maximize()}
           className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
         >
           <svg data-ui="title-bar-svg-3" data-icon="title-bar-svg-3" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -215,7 +220,7 @@ export function TitleBar() {
         </button>
         <button data-ui="title-bar-button-4"
           type="button"
-          onClick={() => window.electronAPI?.close()}
+          onClick={() => window.electrobunAPI?.close()}
           className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-destructive hover:text-destructive-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
         >
           <svg data-ui="title-bar-svg-4" data-icon="title-bar-svg-4" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

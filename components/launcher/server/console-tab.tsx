@@ -1,4 +1,5 @@
 import { CONTENT_ENTER_DELAYED } from "../content-motion"
+import { SERVICE_URLS } from "@xnlc/urls"
 import { useEffect, useRef, useState, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { IconSend, IconTrash, IconTerminal2, IconCopy, IconCheck, IconShare, IconBrain, IconArrowDown, IconLoader2 } from "@tabler/icons-react"
@@ -15,9 +16,10 @@ interface ConsoleTabProps {
   onCommandChange: (cmd: string) => void
   onSendCommand: () => void
   onClearLogs: () => void
+  canCommand?: boolean
 }
 
-export function ConsoleTab({ serverId, serverName, logs, isRunning, command, onCommandChange, onSendCommand, onClearLogs }: ConsoleTabProps) {
+export function ConsoleTab({ serverId, serverName, logs, isRunning, command, onCommandChange, onSendCommand, onClearLogs, canCommand = true }: ConsoleTabProps) {
   const { t } = useTranslation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -61,7 +63,7 @@ export function ConsoleTab({ serverId, serverName, logs, isRunning, command, onC
     setShareState("loading")
     try {
       const text = logs.map(l => stripAnsi(l)).join("\n")
-      const res = await fetch("https://api.mclo.gs/1/log", {
+      const res = await fetch(SERVICE_URLS.logUpload, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ content: text }),
@@ -181,7 +183,7 @@ export function ConsoleTab({ serverId, serverName, logs, isRunning, command, onC
       <div data-ui="server-console-tab-div-5"
         data-slot="console-output" ref={scrollRef}
         onScroll={handleScroll}
-        className="flex-1 min-h-0 overflow-y-auto rounded-2xl border border-border bg-background p-4 font-mono text-[12px] leading-5"
+        className="flex-1 min-h-0 overflow-y-auto rounded-2xl border border-border bg-card p-4 font-mono text-[12px] leading-5"
       >
         {logs.length === 0 ? (
           <div data-ui="server-console-tab-div-6" className="flex flex-col items-center justify-center h-full text-center">
@@ -214,7 +216,7 @@ export function ConsoleTab({ serverId, serverName, logs, isRunning, command, onC
       </div>
 
       {/* Command input */}
-      {isRunning && (
+      {isRunning && canCommand && (
         <div data-ui="server-console-tab-div-9" className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
           <div data-ui="server-console-tab-div-10" className="relative flex-1">
             <IconTerminal2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />

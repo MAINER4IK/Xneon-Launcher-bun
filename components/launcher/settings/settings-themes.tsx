@@ -1,10 +1,11 @@
 import { SETTINGS_CONTENT_ENTER_DELAYED } from "./settings-motion"
-import { useState } from "react"
+import { useState, type CSSProperties } from "react"
 import { useTranslation } from "react-i18next"
 import {
   IconCheck,
   IconCopy,
   IconDownload,
+  IconUpload,
   IconPalette,
   IconPencil,
   IconPlus,
@@ -12,14 +13,16 @@ import {
   IconTrash,
 } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
+import { isEventThemeId } from "@/lib/liveops-theme-refs"
 import { ActionConfirmDialog } from "@/components/launcher/instance/action-confirm-dialog"
 import type { Theme } from "./types"
-import { applyTheme } from "./theme-model"
+import { applyTheme, themePreviewColors, THEME_CSS_VARS } from "./theme-model"
 import type { ThemeRegistry } from "./theme-store"
 import { ThemeEditor } from "./theme-editor"
 import { ThemeCompactPreview } from "./theme-preview"
 import { sanitizeTheme, duplicateTheme } from "./theme-model"
 import { useAlertDialog } from "@/lib/use-alert-dialog"
+import { SettingsSwitch } from "./settings-switch"
 
 interface SettingsThemesProps {
   registry: ThemeRegistry
@@ -79,12 +82,17 @@ function ThemeCard({
 }) {
   const { t } = useTranslation()
   const isCustom = !!theme.custom
+  const colors = themePreviewColors(theme)
+  const cardStyle = Object.fromEntries(
+    Object.entries(THEME_CSS_VARS).map(([key, variable]) => [variable, colors[key as keyof typeof colors]])
+  ) as CSSProperties
   const description = theme.description?.trim() || (isCustom
     ? t("settings.themes.description.custom")
     : t(`settings.themes.description.${theme.id}`, { defaultValue: t("settings.themes.description.custom") }))
 
   return (
     <div data-ui="settings-settings-themes-div-1" data-component="theme-card" data-selected={selected} data-custom={isCustom}
+      style={cardStyle}
       className={cn(
         "flex flex-col rounded-2xl border p-3.5 transition-colors",
         selected
@@ -105,6 +113,11 @@ function ThemeCard({
             {isCustom && (
               <span data-ui="settings-settings-themes-span-3" className="rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                 {t("settings.themes.customBadge")}
+              </span>
+            )}
+            {isEventThemeId(theme.id) && (
+              <span className="rounded-md bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                {t("settings.themes.eventBadge")}
               </span>
             )}
             {selected && (
@@ -196,7 +209,7 @@ export function SettingsThemes({ registry }: SettingsThemesProps) {
 
   const handleSave = (theme: Theme) => { void run(async () => {
     await registry.saveTheme(theme)
-    registry.selectTheme(theme.id)
+    await registry.selectTheme(theme.id)
     setEditing(null)
   }) }
 
@@ -208,7 +221,7 @@ export function SettingsThemes({ registry }: SettingsThemesProps) {
 
   const handleDuplicate = (theme: Theme) => { void run(async () => {
     const copy = await registry.copyTheme(theme.id, t("settings.themes.duplicatedName", { name: theme.name }))
-    if (copy) registry.selectTheme(copy.id)
+    if (copy) await registry.selectTheme(copy.id)
   }) }
 
   const confirmDelete = () => { void run(async () => {
@@ -217,19 +230,19 @@ export function SettingsThemes({ registry }: SettingsThemesProps) {
   }) }
 
   const importTheme = () => { void run(async () => {
-    const imported = await window.electronAPI?.importLocalTheme()
+    const imported = await window.electrobunAPI?.importLocalTheme()
     if (!imported) return
     if (imported.kind !== "bundle") throw new Error(t("themeEditor.css.invalid"))
     const source = sanitizeTheme(imported.theme)
     const theme = source ? duplicateTheme(source, source.name, registry.themes.map(item => item.id)) : null
     if (!theme) throw new Error(t("themeEditor.css.invalid"))
     await registry.saveTheme(theme)
-    registry.selectTheme(theme.id)
+    await registry.selectTheme(theme.id)
   }) }
 
   return (
     <div data-ui="settings-settings-themes-div-5" data-component="settings-themes" className={`space-y-8 ${SETTINGS_CONTENT_ENTER_DELAYED}`}>
-      <section data-ui="settings-settings-themes-section-1" className="space-y-4">
+      <section data-ui="settings-settings-themes-section-1" className="space-y-4 rounded-2xl border border-border bg-card p-5">
         <h3 data-ui="settings-settings-themes-h3-1" className="flex items-center gap-2 text-lg font-medium text-foreground">
           <IconPalette className="h-5 w-5 text-primary" strokeWidth={1.75} />
           {t("settings.themes.presets")}
@@ -240,20 +253,20 @@ export function SettingsThemes({ registry }: SettingsThemesProps) {
               key={theme.id}
               theme={theme}
               selected={registry.selectedThemeId === theme.id}
-              onSelect={() => registry.selectTheme(theme.id)}
+              onSelect={() => { void run(() => registry.selectTheme(theme.id)) }}
             />
           ))}
         </div>
       </section>
 
-      <section data-ui="settings-settings-themes-section-2" className="space-y-4">
+      <section data-ui="settings-settings-themes-section-2" className="space-y-4 rounded-2xl border border-border bg-card p-5">
         <div data-ui="settings-settings-themes-div-7" className="flex flex-wrap items-center justify-between gap-3">
           <h3 data-ui="settings-settings-themes-h3-2" className="flex items-center gap-2 text-lg font-medium text-foreground">
             <IconSparkles className="h-5 w-5 text-primary" strokeWidth={1.75} />
             {t("settings.themes.custom")}
           </h3>
           <div data-component="theme-file-toolbar" className="flex flex-wrap items-center gap-2" aria-busy={busy}>
-            <button data-ui="theme-import-local" disabled={busy} type="button" onClick={importTheme} className="rounded-xl border border-border bg-card px-3 py-2 text-xs text-card-foreground transition-colors hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:opacity-50">{t("themeLocal.import")}</button>
+            <button data-ui="theme-import-local" disabled={busy} type="button" onClick={importTheme} className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-xs text-card-foreground transition-colors hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:opacity-50"><IconUpload className="size-4" strokeWidth={1.75} aria-hidden="true" />{t("themeLocal.import")}</button>
             {createButton()}
           </div>
         </div>
@@ -266,11 +279,11 @@ export function SettingsThemes({ registry }: SettingsThemesProps) {
                 key={theme.id}
                 theme={theme}
                 selected={registry.selectedThemeId === theme.id}
-                onSelect={() => registry.selectTheme(theme.id)}
+                onSelect={() => { void run(() => registry.selectTheme(theme.id)) }}
                 onEdit={() => setEditing({ theme, isNew: false })}
                 onDuplicate={() => handleDuplicate(theme)}
                 onDelete={() => setPendingDelete(theme)}
-                onExport={() => { void run(async () => { await window.electronAPI?.exportLocalTheme(theme, "xntheme") }) }}
+                onExport={() => { void run(async () => { await window.electrobunAPI?.exportLocalTheme(theme, "xntheme") }) }}
               />
             ))}
           </div>
@@ -286,6 +299,19 @@ export function SettingsThemes({ registry }: SettingsThemesProps) {
             <div data-ui="settings-settings-themes-div-12" className="h-28 animate-pulse rounded-2xl border border-border bg-muted/20" />
           </div>
         )}
+      </section>
+
+      <section data-component="theme-liveops-preferences" className="flex items-center justify-between gap-4 rounded-2xl border border-border bg-card p-5">
+        <div className="flex min-w-0 items-start gap-2.5">
+          <IconSparkles className="mt-0.5 h-5 w-5 shrink-0 text-primary" strokeWidth={1.75} aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-foreground">{t("settings.themes.liveopsAutoApply")}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{t("settings.themes.liveopsAutoApplyHint")}</p>
+          </div>
+        </div>
+        <SettingsSwitch checked={registry.autoApplyLiveops} disabled={!registry.ready || busy}
+          label={t("settings.themes.liveopsAutoApply")}
+          onCheckedChange={enabled => { void run(() => registry.setAutoApplyLiveops(enabled)) }} />
       </section>
 
       {editing && (

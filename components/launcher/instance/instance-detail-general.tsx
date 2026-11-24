@@ -7,7 +7,7 @@ import {
   IconCamera,
   IconTrash,
   IconExternalLink,
-  IconFolderOpen,
+  IconFolder,
   IconLock,
   IconLockOpen,
   IconArrowsExchange,
@@ -25,11 +25,12 @@ import { EntityIcon } from "./entity-icon"
 import { PlatformBadge } from "@/components/launcher/platform-icon"
 import { ModpackChangeVersionDialog } from "./modpack-change-version-dialog"
 import { ActionConfirmDialog } from "./action-confirm-dialog"
-import { useMinecraftVersionOptions } from "@/src/hooks/use-minecraft-version-options"
+import { useHomeVersions } from "@/src/hooks/use-home-versions"
 import { useLoaderVersionOptions } from "@/src/hooks/use-loader-version-options"
 import { useActivityCenter } from "@/src/ActivityCenterContext"
 import { formatPlaytime } from "@/lib/format"
 import type { Build } from "./types"
+import { ShareInstanceCard } from "./shared/share-instance-card"
 
 interface InstanceDetailGeneralProps {
   activeBuild: Build
@@ -44,7 +45,7 @@ export function InstanceDetailGeneral({ activeBuild, updateBuild, renameBuild, o
   const { pushNotification } = useActivityCenter()
   const savedNameRef = useRef(activeBuild.name)
   const [showIconPicker, setShowIconPicker] = useState(false)
-  const { visibleVersions, versionsLoaded } = useMinecraftVersionOptions()
+  const { versions: visibleVersions, versionsLoaded } = useHomeVersions(activeBuild.modLoader === "instance" ? "vanilla" : activeBuild.modLoader, activeBuild.version)
   const { loaderVersions, loaderVersionsLoaded, defaultLoaderVersion } = useLoaderVersionOptions(activeBuild.modLoader, activeBuild.version)
   const buildHasImage = !!activeBuild.icon
   const availableVersions = visibleVersions.includes(activeBuild.version)
@@ -86,19 +87,14 @@ export function InstanceDetailGeneral({ activeBuild, updateBuild, renameBuild, o
     setRepairDone(false)
     try {
       if (activeBuild.source === "modrinth" && activeBuild.projectSlug) {
-        const res = await window.electronAPI?.importModrinthModpack(
+        const res = await window.electrobunAPI?.importModrinthModpack(
           activeBuild.name,
           activeBuild.projectSlug,
           activeBuild.modpackVersionId,
           activeBuild.id
         )
         if (res?.success) {
-          updateBuild(activeBuild.id, {
-            version: res.version || activeBuild.version,
-            modLoader: res.modLoader || activeBuild.modLoader,
-            loaderVersion: res.loaderVersion || activeBuild.loaderVersion,
-            mods: res.mods ?? activeBuild.mods,
-          })
+          window.dispatchEvent(new CustomEvent("launcher:modpack-updated", { detail: { buildId: activeBuild.id } }))
           setRepairDone(true)
           setTimeout(() => setRepairDone(false), 3000)
         } else {
@@ -108,19 +104,14 @@ export function InstanceDetailGeneral({ activeBuild, updateBuild, renameBuild, o
           })
         }
       } else if (activeBuild.source === "curseforge" && activeBuild.modId && activeBuild.fileId) {
-        const res = await window.electronAPI?.importCurseforgeModpack(
+        const res = await window.electrobunAPI?.importCurseforgeModpack(
           activeBuild.name,
           activeBuild.modId,
           activeBuild.fileId,
           activeBuild.id
         )
         if (res?.success) {
-          updateBuild(activeBuild.id, {
-            version: res.version || activeBuild.version,
-            modLoader: res.modLoader || activeBuild.modLoader,
-            loaderVersion: res.loaderVersion || activeBuild.loaderVersion,
-            mods: res.mods ?? activeBuild.mods,
-          })
+          window.dispatchEvent(new CustomEvent("launcher:modpack-updated", { detail: { buildId: activeBuild.id } }))
           setRepairDone(true)
           setTimeout(() => setRepairDone(false), 3000)
         } else {
@@ -161,7 +152,7 @@ export function InstanceDetailGeneral({ activeBuild, updateBuild, renameBuild, o
    */
   const pruneStaleLoaders = useCallback((modLoader: string, loaderVersion?: string) => {
     if (!activeBuild.name) return
-    void window.electronAPI?.pruneLoaderProfiles(activeBuild.name, modLoader, loaderVersion)
+    void window.electrobunAPI?.pruneLoaderProfiles(activeBuild.name, modLoader, loaderVersion)
       .then((result) => {
         if (!result?.removed?.length) return
         // Профиль прежнего загрузчика реально стёрт с диска — показываем это,
@@ -226,7 +217,7 @@ export function InstanceDetailGeneral({ activeBuild, updateBuild, renameBuild, o
               <button data-ui="instance-instance-detail-general-button-1"
                 type="button"
                 onClick={() => updateBuild(activeBuild.id, { icon: "", coverImage: undefined })}
-                className="mt-4 flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                className="mt-4 inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2 text-xs font-medium text-destructive transition-colors hover:border-destructive/50 hover:bg-destructive/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <IconTrash className="h-3.5 w-3.5" strokeWidth={1.75} />
                 {t("builds.remove")}
@@ -429,15 +420,17 @@ export function InstanceDetailGeneral({ activeBuild, updateBuild, renameBuild, o
               </div>
             )}
 
+            <ShareInstanceCard key={activeBuild.id} buildId={activeBuild.id} onUpdated={() => window.dispatchEvent(new Event("launcher:share-updated"))} />
+
             <div data-ui="instance-instance-detail-general-div-37" className="flex items-center justify-between gap-3 pt-2 border-t border-border/50 flex-wrap">
               <div data-ui="instance-instance-detail-general-div-38" className="flex items-center gap-4">
                 {activeBuild.intentPath && (
                   <button data-ui="instance-instance-detail-general-button-7"
                     type="button"
-                    onClick={() => window.electronAPI?.openPath(activeBuild.intentPath!)}
+                    onClick={() => window.electrobunAPI?.openPath(activeBuild.intentPath!)}
                     className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3.5 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted"
                   >
-                    <IconFolderOpen className="h-4 w-4" strokeWidth={1.75} />
+                    <IconFolder className="h-4 w-4 text-primary" />
                     {t("buildDetail.openGameFolder")}
                   </button>
                 )}
@@ -468,18 +461,7 @@ export function InstanceDetailGeneral({ activeBuild, updateBuild, renameBuild, o
         open={showChangeVersionDialog}
         onClose={() => setShowChangeVersionDialog(false)}
         build={activeBuild}
-        onVersionChanged={(info) => {
-          updateBuild(activeBuild.id, {
-            modpackVersion: info.modpackVersion,
-            modpackVersionId: info.modpackVersionId,
-            version: info.version,
-            modLoader: info.modLoader,
-            loaderVersion: info.loaderVersion,
-            mods: info.mods ?? activeBuild.mods,
-            resourcepacks: info.resourcepacks ?? activeBuild.resourcepacks,
-            shaders: info.shaders ?? activeBuild.shaders,
-          })
-        }}
+        onVersionChanged={() => window.dispatchEvent(new CustomEvent("launcher:modpack-updated", { detail: { buildId: activeBuild.id } }))}
       />
 
       <ActionConfirmDialog

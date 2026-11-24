@@ -1,9 +1,11 @@
+import { ModalCloseButton } from "@/components/ui/modal-close-button"
+import { IconX as LauncherCancelIcon } from "@tabler/icons-react"
 import { useContentEnter } from "../content-motion"
 import { useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/lib/utils"
 import { formatBytes, formatDateTime } from "@/lib/format"
-import { IconCamera, IconChevronLeft, IconChevronRight, IconFolderOpen, IconLoader2, IconPhoto, IconRefresh, IconTrash, IconX, IconPencil } from "@tabler/icons-react"
+import { IconCamera, IconChevronLeft, IconChevronRight, IconFolder, IconLoader2, IconPhoto, IconRefresh, IconTrash, IconX, IconPencil } from "@tabler/icons-react"
 import type { Build, ScreenshotInfo } from "./types"
 import { useAlertDialog } from "@/lib/use-alert-dialog"
 import { ModalLayer } from "@/components/ui/modal-layer"
@@ -28,7 +30,7 @@ export function InstanceScreenshotsTab({ build }: InstanceScreenshotsTabProps) {
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      const list = await window.electronAPI?.listScreenshots(build.name)
+      const list = await window.electrobunAPI?.listScreenshots(build.name)
       setShots(list ?? [])
     } finally {
       setLoading(false)
@@ -47,7 +49,7 @@ export function InstanceScreenshotsTab({ build }: InstanceScreenshotsTabProps) {
     let cancelled = false
     setLoadingFull(true)
     setFullImage(null)
-    window.electronAPI?.getScreenshot(build.name, shots[viewIndex]?.name ?? "").then(dataUrl => {
+    window.electrobunAPI?.getScreenshot(build.name, shots[viewIndex]?.name ?? "").then(dataUrl => {
       if (!cancelled) setFullImage(dataUrl)
     }).finally(() => {
       if (!cancelled) setLoadingFull(false)
@@ -69,7 +71,7 @@ export function InstanceScreenshotsTab({ build }: InstanceScreenshotsTabProps) {
   const handleDelete = async (index: number) => {
     const shot = shots?.[index]
     if (!shot) return
-    const result = await window.electronAPI?.deleteScreenshot(build.name, shot.name)
+    const result = await window.electrobunAPI?.deleteScreenshot(build.name, shot.name)
     if (result?.success) {
       if (viewIndex === index) setViewIndex(null)
       await refresh()
@@ -84,7 +86,7 @@ export function InstanceScreenshotsTab({ build }: InstanceScreenshotsTabProps) {
       setRenameFor(null)
       return
     }
-    const result = await window.electronAPI?.renameScreenshot(build.name, oldName, newName)
+    const result = await window.electrobunAPI?.renameScreenshot(build.name, oldName, newName)
     setRenameFor(null)
     if (result?.success) {
       await refresh()
@@ -102,7 +104,7 @@ export function InstanceScreenshotsTab({ build }: InstanceScreenshotsTabProps) {
       ) : shots.length === 0 ? (
         // Пустое состояние в том же оформлении, что вкладки «Миры» и «Серверы»:
         // крупная иконка в цветной плашке, жирный заголовок и действие.
-        <div data-ui="instance-instance-screenshots-tab-div-3" className="flex h-full flex-col items-center justify-center gap-4 text-center max-w-md mx-auto py-12">
+        <div data-ui="instance-instance-screenshots-tab-div-3" className="flex h-full flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card px-4 py-12 text-center">
           <div data-ui="instance-instance-screenshots-tab-div-4" className="flex h-20 w-20 items-center justify-center rounded-3xl bg-primary/10 text-primary border border-primary/20">
             <IconCamera className="h-10 w-10" strokeWidth={1.75} />
           </div>
@@ -212,13 +214,13 @@ export function InstanceScreenshotsTab({ build }: InstanceScreenshotsTabProps) {
               </button>
               <button data-ui="instance-instance-screenshots-tab-button-7"
                 type="button"
-                onClick={() => window.electronAPI?.openPath(shots[viewIndex]?.path ?? "")}
+                onClick={() => window.electrobunAPI?.openPath(shots[viewIndex]?.path ?? "")}
                 className="flex h-9 w-9 items-center justify-center rounded-xl bg-muted/50 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 title={t("screenshots.openFolder")}
               >
-                <IconFolderOpen className="h-5 w-5" strokeWidth={1.75} />
+                <IconFolder className="h-5 w-5" strokeWidth={1.75} />
               </button>
-              <button data-ui="instance-instance-screenshots-tab-button-8"
+              <button data-modal-close data-ui="instance-instance-screenshots-tab-button-8"
                 type="button"
                 onClick={() => setViewIndex(null)}
                 className="flex h-9 w-9 items-center justify-center rounded-xl bg-muted/50 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -265,7 +267,8 @@ export function InstanceScreenshotsTab({ build }: InstanceScreenshotsTabProps) {
           onClose={() => setRenameFor(null)}
           className="z-[60] animate-in fade-in-0"
         >
-          <div data-ui="instance-instance-screenshots-tab-div-26" className="w-80 rounded-2xl border border-border bg-card p-4 shadow-2xl animate-in zoom-in-95">
+          <div data-ui="instance-instance-screenshots-tab-div-26" className="relative w-80 rounded-2xl border border-border bg-card p-4 shadow-2xl animate-in zoom-in-95 pt-14">
+          <ModalCloseButton className="absolute right-3 top-3 z-10" onClick={() => setRenameFor(null)} />
             <p data-ui="instance-instance-screenshots-tab-p-2" className="text-sm font-semibold text-foreground mb-3">{t("screenshots.rename.title")}</p>
             <input data-ui="instance-instance-screenshots-tab-input-1"
               autoFocus
@@ -279,7 +282,7 @@ export function InstanceScreenshotsTab({ build }: InstanceScreenshotsTabProps) {
               className="w-full rounded-xl border border-border bg-muted/40 px-3 py-2 text-sm outline-none focus:border-primary mb-3"
             />
             <div data-ui="instance-instance-screenshots-tab-div-27" className="flex justify-end gap-2">
-              <button data-ui="instance-instance-screenshots-tab-button-11" type="button" onClick={() => setRenameFor(null)} className="px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-muted text-muted-foreground">{t("common.cancel")}</button>
+              <button data-ui="instance-instance-screenshots-tab-button-11" type="button" onClick={() => setRenameFor(null)} className="px-3 py-1.5 rounded-lg border border-border bg-muted text-xs font-medium hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors">{<span className="inline-flex items-center justify-center gap-2"><LauncherCancelIcon className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />{t("common.cancel")}</span>}</button>
               <button data-ui="instance-instance-screenshots-tab-button-12"
                 type="button"
                 onClick={() => void handleRename(renameFor)}

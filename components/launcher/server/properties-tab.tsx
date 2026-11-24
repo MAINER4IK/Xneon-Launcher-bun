@@ -2,7 +2,7 @@ import { CONTENT_ENTER_DELAYED } from "../content-motion"
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { EmptyState } from "@/components/ui/empty-state"
-import { IconCheck, IconLoader2, IconSearch, IconChevronDown, IconChevronRight, IconRefresh, IconWorld, IconDeviceGamepad, IconBolt, IconPackage, IconRadio, IconTool, IconAdjustments } from "@tabler/icons-react"
+import { IconCheck, IconLoader2, IconSearch, IconChevronDown, IconChevronRight, IconRefresh, IconWorld, IconDeviceGamepad, IconBolt, IconPhoto, IconRadio, IconTool, IconAdjustments } from "@tabler/icons-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { McServerInfo } from "@xnlc/types"
 import { cn } from "@/lib/utils"
@@ -121,7 +121,7 @@ const GROUPS: Record<string, { labelKey: string; icon: React.ElementType }> = {
   game: { labelKey: "properties.group.game", icon: IconDeviceGamepad },
   world: { labelKey: "properties.group.world", icon: IconAdjustments },
   performance: { labelKey: "properties.group.performance", icon: IconBolt },
-  resourcepack: { labelKey: "properties.group.resourcepack", icon: IconPackage },
+  resourcepack: { labelKey: "properties.group.resourcepack", icon: IconPhoto },
   broadcast: { labelKey: "properties.group.broadcast", icon: IconRadio },
   management: { labelKey: "properties.group.management", icon: IconTool },
   misc: { labelKey: "properties.group.misc", icon: IconAdjustments },
@@ -153,7 +153,7 @@ export function PropertiesTab({ server, flushRef, onServerUpdated }: PropertiesT
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    window.electronAPI?.mcServerReadProperties(server.id).then(props => {
+    window.electrobunAPI?.mcServerReadProperties(server.id).then(props => {
       if (cancelled) return
       if (props) {
         setProperties(props)
@@ -170,10 +170,10 @@ export function PropertiesTab({ server, flushRef, onServerUpdated }: PropertiesT
   const save = useCallback(async (props: Record<string, string>) => {
     setSaving(true)
     try {
-      await window.electronAPI?.mcServerWriteProperties(server.id, props)
+      await window.electrobunAPI?.mcServerWriteProperties(server.id, props)
       // Запись возвращает актуальные данные сервера: порт/online-mode/слоты
       // синхронизируются с файлом, поэтому список в лаунчере тоже обновляем.
-      const fresh = await window.electronAPI?.mcServerGet(server.id)
+      const fresh = await window.electrobunAPI?.mcServerGet(server.id)
       if (fresh) onServerUpdated?.(fresh)
       setSaved(true)
       setHasChanges(false)
@@ -268,9 +268,9 @@ export function PropertiesTab({ server, flushRef, onServerUpdated }: PropertiesT
   }
 
   return (
-    <div data-ui="server-properties-tab-div-2" data-component="properties-tab" className={`flex flex-col h-full ${CONTENT_ENTER_DELAYED}`}>
+    <div data-ui="server-properties-tab-div-2" data-component="properties-tab" className={`flex flex-col gap-3 h-full overflow-hidden ${CONTENT_ENTER_DELAYED}`}>
       {/* Toolbar */}
-      <div data-ui="server-properties-tab-div-3" className="flex items-center gap-2 px-4 py-2 border-b border-border">
+      <div data-ui="server-properties-tab-div-3" className="flex shrink-0 items-center gap-2 rounded-2xl border border-border/70 bg-card px-4 py-2">
         <div data-ui="server-properties-tab-div-4" className="relative flex-1">
           <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input data-ui="server-properties-tab-input-1"
@@ -304,7 +304,8 @@ export function PropertiesTab({ server, flushRef, onServerUpdated }: PropertiesT
       </div>
 
       {/* Properties list */}
-      <div data-ui="server-properties-tab-div-6" className="flex-1 overflow-y-auto p-4 space-y-1">
+      <div className="flex min-h-0 flex-1 overflow-hidden rounded-2xl border border-border/70 bg-card p-2">
+      <div data-ui="server-properties-tab-div-6" className="min-h-0 flex-1 overflow-y-auto p-2 space-y-1 [&::-webkit-scrollbar-track]:bg-transparent">
         {Object.entries(GROUPS).map(([groupKey, groupInfo]) => {
           const defs = groupedDefs[groupKey]
           if (!defs || defs.length === 0) return null
@@ -343,8 +344,9 @@ export function PropertiesTab({ server, flushRef, onServerUpdated }: PropertiesT
         })}
 
         {filteredDefs.length === 0 && (
-          <EmptyState compact title={t("properties.noResults")} className="py-10" />
+          <EmptyState compact title={t("properties.noResults")} className="rounded-none border-0 bg-transparent py-10" />
         )}
+      </div>
       </div>
     </div>
   )
