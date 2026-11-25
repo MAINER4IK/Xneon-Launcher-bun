@@ -280,6 +280,7 @@ test('release guard поддерживает оба вида tags, запрещ�
 })
 
 test('macOS metadata wrapper сверяет bundle с проверенным manifest и версией пакета', async t => {
+  const { appIdentifier } = await import('../../electrobun/main/app-identity.ts')
   await fs.mkdir(path.join(root, '.tmp'), { recursive: true })
   const directory = await fs.mkdtemp(path.join(root, '.tmp/macos-bundle-version-'))
   t.after(() => fs.rm(directory, { recursive: true, force: true }))
@@ -293,7 +294,7 @@ test('macOS metadata wrapper сверяет bundle с проверенным man
     assert.ok(check, 'Wrapper metadata must match the validated SDK manifest')
     const code = /bun -e '(.+)'$/.exec(check)?.[1]
     assert.ok(code, 'Expected an executable version check')
-    const metadata = { identifier: 'org.xneon.launcher', channel, hash: 'fixture123' }
+    const metadata = { identifier: appIdentifier, channel, hash: 'fixture123' }
     for (const [manifestPatch, metadataPatch, valid] of [[{}, {}, true], [{ version: '0.0.0' }, {}, false], [{}, { hash: 'different' }, false], [{}, { identifier: 'other.app' }, false], [{}, { channel: null }, false]]) {
       await fs.writeFile(file, JSON.stringify({ ...metadata, ...metadataPatch }))
       await fs.writeFile(manifestFile, JSON.stringify({ ...metadata, version, ...manifestPatch }))
